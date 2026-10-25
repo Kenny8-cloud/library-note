@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '2.1（2026-10-25）';
+export const APP_VERSION = '2.2（2026-10-25）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -9,12 +9,46 @@ export function esc(v) {
 
 export const KID_COLORS = ['#3f7fd0', '#d0577f', '#3a9a6a', '#d08a2a', '#8a5ad0', '#4aa6b5'];
 
+// ISBN-13（978で始まるもの）を ISBN-10 にする。Amazon の画像アドレスは ISBN-10 で作るため
+function isbn10(isbn) {
+  const s = String(isbn || '');
+  if (s.length === 10) return s;
+  if (!/^978\d{10}$/.test(s)) return null;
+  const body = s.slice(3, 12);
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(body[i]) * (10 - i);
+  const c = (11 - (sum % 11)) % 11;
+  return body + (c === 10 ? 'X' : String(c));
+}
+
+function amazonCover(isbn) {
+  const i10 = isbn10(isbn);
+  return i10 ? `https://images-na.ssl-images-amazon.com/images/P/${i10}.09.LZZZZZZZ.jpg` : '';
+}
+
+// 表紙が読み込めなかったときは次の候補へ。Google Books の「image not available」
+// （ブラウザでは 128x186、それ以外では 128x170 で返る）と Amazon の「画像なし」（1x1）は表紙なしとして扱う
+window.__coverLoad = img => {
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (w < 20 || (w === 128 && (h === 170 || h === 186))) window.__coverFail(img);
+};
+window.__coverFail = img => {
+  const next = img.dataset.next;
+  if (next && img.src !== next) {
+    img.dataset.next = '';
+    img.src = next;
+  } else {
+    img.remove();
+  }
+};
+
 export function cover(book, size = '') {
   const initial = esc((book.title || '？').slice(0, 6));
-  // Google Books は表紙がないとき 128x170 の「image not available」画像を返すので、それも表紙なしとして扱う
-  const img = book.coverUrl
-    ? `<img src="${esc(book.coverUrl)}" alt="" loading="lazy" onerror="this.remove()"
-        onload="if(this.naturalWidth<20||(this.naturalWidth===128&&this.naturalHeight===170))this.remove()">`
+  const first = book.coverUrl || amazonCover(book.isbn);
+  const next = book.coverUrl && book.coverUrl.includes('books.google.com') ? amazonCover(book.isbn) : '';
+  const img = first
+    ? `<img src="${esc(first)}" data-next="${esc(next)}" alt="" loading="lazy"
+        onerror="__coverFail(this)" onload="__coverLoad(this)">`
     : '';
   return `<div class="cover ${size}"><span>${initial}</span>${img}</div>`;
 }
