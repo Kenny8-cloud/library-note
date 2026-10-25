@@ -8,8 +8,10 @@ export const KID_COLORS = ['#3f7fd0', '#d0577f', '#3a9a6a', '#d08a2a', '#8a5ad0'
 
 export function cover(book, size = '') {
   const initial = esc((book.title || '？').slice(0, 6));
+  // Google Books は表紙がないとき 128x170 の「image not available」画像を返すので、それも表紙なしとして扱う
   const img = book.coverUrl
-    ? `<img src="${esc(book.coverUrl)}" alt="" loading="lazy" onerror="this.remove()" onload="if(this.naturalWidth<20)this.remove()">`
+    ? `<img src="${esc(book.coverUrl)}" alt="" loading="lazy" onerror="this.remove()"
+        onload="if(this.naturalWidth<20||(this.naturalWidth===128&&this.naturalHeight===170))this.remove()">`
     : '';
   return `<div class="cover ${size}"><span>${initial}</span>${img}</div>`;
 }

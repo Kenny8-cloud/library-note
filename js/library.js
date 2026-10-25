@@ -32,6 +32,10 @@ export async function bookByIsbn(isbn) {
   return book || null;
 }
 
+export function allBooks() {
+  return db.all('books');
+}
+
 export function getBook(id) {
   return db.get('books', id);
 }

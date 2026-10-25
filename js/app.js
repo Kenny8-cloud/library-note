@@ -12,8 +12,9 @@ import search from './views/search.js';
 import book from './views/book.js';
 import reserve from './views/reserve.js';
 import settings from './views/settings.js';
+import importView from './views/import.js';
 
-const routes = { setup, home, shelf, scan, register, search, book, reserve, settings };
+const routes = { setup, home, shelf, scan, register, search, book, reserve, settings, import: importView };
 const KID_KEY = 'current-child';
 
 export const ctx = {

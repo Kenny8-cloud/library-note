@@ -34,6 +34,7 @@ export default async function settings(root, ctx) {
 
       <h3 class="sub-h">データ</h3>
       <div class="card list">
+        <a class="list-btn" href="#/import">過去の履歴を取り込む（CSV）</a>
         <button class="list-btn" id="export">ファイルに書き出す（バックアップ）</button>
         <label class="list-btn">ファイルから読み込む（復元）<input type="file" id="import" accept="application/json,.json" hidden></label>
       </div>
