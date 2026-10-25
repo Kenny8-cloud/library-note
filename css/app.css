@@ -1,21 +1,23 @@
+/* 図書館の雰囲気: 生成りの紙、深い緑、真鍮、木の棚 */
 :root {
-  --bg: #f6f5f2; --paper: #fff; --ink: #222; --sub: #6b6b6b; --line: #dcdad4; --fill: #eeece7;
-  --accent: #2f6fb2; --accent-soft: #e3edf8; --warn: #b5560f; --warn-soft: #fbeadc; --ok: #2e7d4f; --ok-soft: #e1f2e7;
-  --danger: #c0392b;
+  --bg: #efe8da; --paper: #faf6ee; --ink: #2b2620; --sub: #7a6f60; --line: #e0d6c3; --fill: #f0e8d9;
+  --accent: #2f5d4a; --accent-soft: #e1ebe4; --warn: #a5541c; --warn-soft: #f6e6d6; --ok: #3d7a52; --ok-soft: #e2efe3;
+  --danger: #a8392b; --brass: #a8843f; --wood: #6e4b31; --wood-dark: #4f3422; --stamp: #b2402f;
+  --serif: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
   --safe-b: env(safe-area-inset-bottom, 0px);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #18181a; --paper: #232326; --ink: #ececec; --sub: #a0a0a0; --line: #3e3e42; --fill: #2e2e32;
-    --accent: #7fb0e8; --accent-soft: #24364a; --warn: #f0a066; --warn-soft: #4a3020; --ok: #7fcf9c; --ok-soft: #203a2a;
-    --danger: #ff8a7a;
+    --bg: #13110d; --paper: #1d1a15; --ink: #ece4d4; --sub: #a99d89; --line: #3a3329; --fill: #29241d;
+    --accent: #8fc2a6; --accent-soft: #233229; --warn: #e3a06b; --warn-soft: #3f2a1a; --ok: #8fca9f; --ok-soft: #20321f;
+    --danger: #f08a7a; --brass: #c9a35c; --wood: #5a3d28; --wood-dark: #3b2819; --stamp: #e07a64;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #18181a; --paper: #232326; --ink: #ececec; --sub: #a0a0a0; --line: #3e3e42; --fill: #2e2e32;
-  --accent: #7fb0e8; --accent-soft: #24364a; --warn: #f0a066; --warn-soft: #4a3020; --ok: #7fcf9c; --ok-soft: #203a2a;
-  --danger: #ff8a7a;
+  --bg: #13110d; --paper: #1d1a15; --ink: #ece4d4; --sub: #a99d89; --line: #3a3329; --fill: #29241d;
+  --accent: #8fc2a6; --accent-soft: #233229; --warn: #e3a06b; --warn-soft: #3f2a1a; --ok: #8fca9f; --ok-soft: #20321f;
+  --danger: #f08a7a; --brass: #c9a35c; --wood: #5a3d28; --wood-dark: #3b2819; --stamp: #e07a64;
 }
 
 * { box-sizing: border-box; }
@@ -229,6 +231,80 @@ select.input { appearance: auto; }
 .shelf .who b { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 2px rgba(0,0,0,.4); }
 button.chip { border: 0; cursor: pointer; font: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
 .hit-count { font-size: 14px; background: var(--accent-soft); color: var(--accent); border-radius: 8px; padding: 6px 10px; }
+
+/* ---- ホーム（図書館の雰囲気） ---- */
+#app[data-view="home"] { background: var(--bg); }
+.home-hero {
+  position: relative; padding: calc(env(safe-area-inset-top, 0px) + 22px) 20px 26px; text-align: center;
+  background: var(--accent); color: #f3ead7;
+  background-image: radial-gradient(ellipse at top, rgba(255,255,255,.10), transparent 60%);
+}
+.home-hero .icon-btn { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 12px); right: 14px; color: #e7dcc4; }
+.home-hero .eyebrow { font-size: 10.5px; letter-spacing: .32em; color: var(--brass); filter: brightness(1.35); }
+.home-hero h1 { font-family: var(--serif); font-weight: 600; font-size: 28px; letter-spacing: .12em; margin: 4px 0 2px; }
+.home-hero .date { font-family: var(--serif); font-size: 13px; opacity: .85; }
+.ornament { display: flex; align-items: center; gap: 10px; justify-content: center; margin: 10px auto 0; width: 180px; color: var(--brass); filter: brightness(1.3); font-size: 11px; }
+.ornament::before, .ornament::after { content: ""; flex: 1; border-top: 1px solid currentColor; opacity: .7; }
+.home-body { padding: 0 16px 24px; display: flex; flex-direction: column; gap: 16px; margin-top: -14px; }
+
+/* 貸出カード風の予約カード */
+.due-card {
+  display: block; position: relative; background: var(--paper); border-radius: 6px; padding: 16px 18px 14px;
+  box-shadow: 0 1px 0 var(--line), 0 6px 18px rgba(60, 40, 20, .10);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--line) 27px 28px);
+  background-position: 0 44px; border-top: 4px solid var(--brass);
+}
+.due-card .label { font-family: var(--serif); font-size: 12px; letter-spacing: .2em; color: var(--sub); }
+.due-card .cols { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 20px; }
+.due-card .num { font-family: var(--serif); font-size: 38px; line-height: 1.1; font-weight: 600; color: var(--ink); }
+.due-card .num small { font-size: 15px; margin-left: 2px; }
+.due-card .num.word { font-size: 26px; }
+.due-card .side { text-align: right; }
+.due-card .side .num { font-size: 30px; color: var(--accent); }
+.due-card .cap { font-size: 11.5px; color: var(--sub); }
+.due-card .go { display: block; margin-top: 10px; text-align: right; color: var(--accent); font-size: 13px; font-weight: 600; }
+.stamp {
+  position: absolute; top: 12px; right: 14px; transform: rotate(-8deg); border: 2px solid var(--stamp); color: var(--stamp);
+  border-radius: 6px; padding: 1px 8px; font-family: var(--serif); font-size: 12px; font-weight: 700; letter-spacing: .1em; opacity: .85;
+}
+
+/* 蔵書数 */
+.holdings { display: flex; align-items: center; gap: 14px; background: var(--paper); border-radius: 6px; padding: 14px 18px; box-shadow: 0 1px 0 var(--line); }
+.holdings .spine { display: flex; gap: 3px; align-items: flex-end; }
+.holdings .spine i { display: block; width: 7px; border-radius: 1px; background: var(--accent); }
+.holdings .spine i:nth-child(2) { background: var(--brass); }
+.holdings .spine i:nth-child(3) { background: var(--wood); }
+.holdings .t { flex: 1; }
+.holdings h4 { font-family: var(--serif); font-size: 12.5px; letter-spacing: .15em; color: var(--sub); font-weight: 500; }
+.holdings .num { font-family: var(--serif); font-size: 30px; font-weight: 600; line-height: 1.15; }
+.holdings .num small { font-size: 14px; margin-left: 2px; }
+.holdings a { color: var(--accent); font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+/* 木の棚に並ぶ最近の本 */
+.bookshelf-card h3 { font-family: var(--serif); font-size: 15px; font-weight: 600; letter-spacing: .1em; display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.bookshelf-card h3 small { font-family: system-ui, sans-serif; font-size: 12px; color: var(--sub); letter-spacing: 0; font-weight: 400; }
+.wood-shelf {
+  display: flex; gap: 10px; overflow-x: auto; padding: 14px 14px 0; scrollbar-width: none;
+  background: linear-gradient(to bottom, var(--fill), var(--paper)); border-radius: 6px 6px 0 0;
+}
+.wood-shelf a { flex: none; }
+.wood-shelf .cover { width: 62px; height: 88px; border-radius: 2px 4px 4px 2px; box-shadow: 2px 2px 4px rgba(40, 25, 10, .25); }
+.shelf-board { height: 12px; border-radius: 0 0 4px 4px; background: linear-gradient(to bottom, var(--wood), var(--wood-dark)); box-shadow: 0 4px 8px rgba(40, 25, 10, .25); }
+.bookshelf-card .empty { padding: 18px 0; }
+
+/* カード目録の引き出し風のボタン */
+.drawers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.drawer {
+  position: relative; background: linear-gradient(to bottom, #8a6545, var(--wood)); color: #f6ecd8; border-radius: 6px;
+  padding: 16px 12px 14px; text-align: center; box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 3px 8px rgba(40, 25, 10, .25);
+}
+.drawer .plate {
+  display: block; margin: 0 auto 8px; width: 64%; padding: 3px 0; border-radius: 3px; font-size: 18px;
+  background: linear-gradient(to bottom, #e3c98e, var(--brass)); color: var(--wood-dark); box-shadow: inset 0 1px 1px rgba(255,255,255,.5);
+}
+.drawer b { display: block; font-family: var(--serif); font-size: 14.5px; letter-spacing: .05em; line-height: 1.35; }
+.drawer small { display: block; margin-top: 4px; font-size: 11.5px; opacity: .8; }
+.drawer::after { content: ""; position: absolute; left: 50%; bottom: 7px; width: 26px; height: 5px; margin-left: -13px; border-radius: 3px; background: var(--brass); opacity: .9; }
 
 /* ---- レシート ---- */
 .crop-box { position: relative; border-radius: 8px; overflow: hidden; }
