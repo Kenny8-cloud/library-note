@@ -1,12 +1,24 @@
 // S-02 ホーム。図書館の雰囲気（貸出カード・木の書棚・目録の引き出し）で、予約の時期、蔵書数、最近借りた本を見せる。
 // 本棚と同じく、借りた本の冊数と最近借りた本は家族全体で表示する
 import * as lib from '../library.js';
-import { esc, cover, formatDate } from '../ui.js';
+import { esc, cover, formatDate, toast } from '../ui.js';
 import { tabs } from '../app.js';
+import { releases, checkNewReleases, dismissRelease, wishRelease } from '../releases.js';
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
 
-export default async function home(root) {
+// 図書館のデータには発売前の本が載ることもあるので、今月より先なら「発売予定」とする
+function releaseDate(d) {
+  if (!d) return '';
+  const [y, m] = d.split('-');
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return (m ? `${y}年${Number(m)}月` : `${y}年`) + (d > thisMonth ? '発売予定' : '発売');
+}
+
+export default async function home(root, ctx) {
+  const news = (await releases()).sort((a, b) => (b.pubdate || '').localeCompare(a.pubdate || ''));
+  const kidName = id => ctx.children.find(c => c.id === id)?.name || '';
   const history = await lib.familyHistory();
   const latestDate = history[0]?.borrowedAt;
   const latest = history.filter(l => l.borrowedAt === latestDate).slice(0, 12);
@@ -33,6 +45,18 @@ export default async function home(root) {
         </div>
       </div>
 
+      ${news.length ? `<section class="news-card">
+        <h3>📣 新刊のお知らせ<small>${news.length}冊</small></h3>
+        ${news.slice(0, 5).map(r => `<div class="row">
+          ${cover({ title: r.title, isbn: r.isbn })}
+          <div class="t"><b>${esc(r.title)}</b>
+            <span class="muted small">${esc(r.seriesTitle)}${r.volume ? ` ${r.volume}巻` : ''} ・ ${esc(releaseDate(r.pubdate))} ・ ${r.childIds.map(kidName).map(esc).join('・')}が読み進め中</span>
+            <span class="news-btns"><button class="btn sm" data-wishnew="${esc(r.isbn)}">借りたい本に追加</button>
+              <button class="link-btn small" data-dismiss="${esc(r.isbn)}">表示しない</button></span></div>
+        </div>`).join('')}
+        ${news.length > 5 ? `<p class="muted small">ほか ${news.length - 5}冊（追加するか「表示しない」を押すと次が出ます）</p>` : ''}
+      </section>` : ''}
+
       <a class="holdings reserve-row" href="#/reserve">
         <span class="card-icon">🔖</span>
         <div class="t"><h4>予約候補</h4><div class="num">${candidates}<small>冊</small></div></div>
@@ -49,8 +73,28 @@ export default async function home(root) {
 
       <div class="drawers">
         <a class="drawer" href="#/receipt"><span class="plate">🧾</span><b>借りた本を登録</b><small>レシートを撮影</small></a>
-        <a class="drawer" href="#/scan/check"><span class="plate">🔍</span><b>借りたことがあるかチェック</b><small>図書館で調べる</small></a>
+        <a class="drawer" href="#/scan"><span class="plate">▥</span><b>借りた本を登録</b><small>本のバーコードを読む</small></a>
+        <a class="drawer wide" href="#/scan/check"><span class="plate">🔍</span><b>貸出履歴の確認</b><small>借りたことがあるか、図書館で調べる</small></a>
       </div>
     </main>
     ${tabs('home')}`;
+
+  root.addEventListener('click', async e => {
+    const w = e.target.closest('[data-wishnew]');
+    if (w) {
+      w.disabled = true;
+      await wishRelease(news.find(r => r.isbn === w.dataset.wishnew));
+      toast('借りたい本に追加しました。予約候補に出ます');
+      ctx.refresh();
+      return;
+    }
+    const d = e.target.closest('[data-dismiss]');
+    if (d) { await dismissRelease(d.dataset.dismiss); ctx.refresh(); }
+  });
+
+  // 新刊の確認は3日に1回、裏で行う。新しく見つかったらホームを描き直す
+  checkNewReleases().then(r => {
+    const onHome = !location.hash || location.hash === '#' || location.hash.startsWith('#/home');
+    if (r?.added && onHome) ctx.refresh();
+  }).catch(() => { /* 通信できないときは次の機会に */ });
 }

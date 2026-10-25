@@ -21,7 +21,7 @@ export default async function scan(root, ctx, [mode]) {
       ${isWish ? `<div class="wish-head"><a class="back-link" href="#/wishlist">‹ 借りたい本リスト</a><b>スキャンして借りたい本に追加</b></div>` : `
       <div class="seg">
         <a href="#/scan" class="${isCheck ? '' : 'on'}">登録</a>
-        <a href="#/scan/check" class="${isCheck ? 'on' : ''}">借りたことある？</a>
+        <a href="#/scan/check" class="${isCheck ? 'on' : ''}">貸出履歴の確認</a>
       </div>
       ${isCheck ? '' : `<a class="btn ghost" href="#/receipt">🧾 レシートからまとめて登録</a>`}`}
       <div class="camera">

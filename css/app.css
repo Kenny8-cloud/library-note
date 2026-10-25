@@ -271,9 +271,21 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: 13px; displa
 /* これまでに借りた本は貸出カード風の枠の中に入れて一番上に置く */
 .holdings-card { padding: 4px 0 0; background-image: none; }
 .holdings-card .holdings { box-shadow: none; background: transparent; padding: 14px 18px 16px; }
-.holdings-card .holdings .num { font-size: 36px; }
+.holdings-card .holdings .num { font-size: 56px; line-height: 1.05; letter-spacing: .02em; }
+.holdings-card .holdings .num small { font-size: 18px; }
+.holdings-card .holdings .spine i { width: 9px; }
+.drawer.wide { grid-column: 1 / -1; }
+.drawer.wide .plate { width: 32%; }
 .reserve-row .card-icon { font-size: 22px; width: 31px; text-align: center; }
 .reserve-row .go { color: var(--accent); font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+/* 新刊のお知らせ */
+.news-card { background: var(--paper); border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 0 var(--line); border-left: 4px solid var(--stamp); }
+.news-card h3 { font-family: var(--serif); font-size: 15px; font-weight: 600; letter-spacing: .08em; display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.news-card h3 small { font-family: system-ui, sans-serif; font-size: 12px; color: var(--sub); letter-spacing: 0; font-weight: 400; }
+.news-card .row { align-items: flex-start; }
+.news-card .t b { white-space: normal; }
+.news-btns { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
 
 /* 蔵書数 */
 .holdings { display: flex; align-items: center; gap: 14px; background: var(--paper); border-radius: 6px; padding: 14px 18px; box-shadow: 0 1px 0 var(--line); }

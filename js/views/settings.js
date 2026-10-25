@@ -3,11 +3,13 @@ import * as lib from '../library.js';
 import * as db from '../db.js';
 import { esc, KID_COLORS, toast, gradeLabel, today, APP_VERSION } from '../ui.js';
 import { topBack } from '../app.js';
+import { checkNewReleases } from '../releases.js';
 import { childForm, readChildForm } from './child-form.js';
 
 export default async function settings(root, ctx) {
   const children = ctx.children;
   const reserve = await lib.reserveSettings();
+  const releasesCheckedAt = await db.getSetting('releasesCheckedAt', null);
 
   root.innerHTML = `
     ${topBack('設定', { back: 'home' })}
@@ -42,6 +44,14 @@ export default async function settings(root, ctx) {
         <button class="btn sm" type="submit">保存</button>
       </form>
 
+      <h3 class="sub-h">新刊のお知らせ</h3>
+      <div class="card stack">
+        <p class="muted small">読み進めているシリーズに新しい巻が出ていないか、3日に1回自動で調べてホームでお知らせします。国立国会図書館のデータを使うため、発売予定が分かるのは発売の1〜2か月前に登録された本だけです。</p>
+        <p class="small">前回の確認: ${releasesCheckedAt ? esc(new Date(releasesCheckedAt).toLocaleString('ja-JP')) : 'まだ'}</p>
+        <button class="btn ghost sm" type="button" id="check-releases">今すぐ確認する</button>
+        <p class="muted small" id="release-progress"></p>
+      </div>
+
       <h3 class="sub-h">データ</h3>
       <div class="card list">
         <a class="list-btn" href="#/import">過去の履歴を取り込む（CSV）</a>
@@ -72,6 +82,19 @@ export default async function settings(root, ctx) {
     const existing = children.find(c => c.id === id);
     await lib.saveChild(existing ? { ...existing, ...values } : values);
     toast(existing ? '保存しました' : `${values.name}を追加しました`);
+    ctx.refresh();
+  });
+
+  root.querySelector('#check-releases').addEventListener('click', async e => {
+    e.target.disabled = true;
+    const p = root.querySelector('#release-progress');
+    p.textContent = '調べています…';
+    try {
+      const r = await checkNewReleases({ force: true, onProgress: (n, all) => { p.textContent = `調べています… ${n} / ${all}シリーズ`; } });
+      toast(r.added ? `新刊が${r.added}冊見つかりました。ホームでお知らせしています` : '新しい巻は見つかりませんでした');
+    } catch {
+      toast('図書館のデータに接続できませんでした');
+    }
     ctx.refresh();
   });
 

@@ -76,6 +76,17 @@ function text(el, ns, tag) {
   return n ? n.textContent.trim() : '';
 }
 
+// 「2026.7」「2026-07-15」「202607」「2026」を「2026-07」「2026」の形にする
+export function normalizePubdate(s) {
+  const t = toHalfWidth(s || '');
+  let m = t.match(/(\d{4})[.\-/年](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}`;
+  m = t.match(/^(\d{4})(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}`;
+  m = t.match(/(\d{4})/);
+  return m ? m[1] : '';
+}
+
 function parseNdlItem(el) {
   const ids = [...el.getElementsByTagNameNS(NS_DC, 'identifier')];
   const isbnEl = ids.find(n => (n.getAttributeNS(NS_XSI, 'type') || n.getAttribute('xsi:type')) === 'dcndl:ISBN');
@@ -104,7 +115,9 @@ function parseNdlItem(el) {
     title: volumeRaw ? `${title} ${toHalfWidth(volumeRaw)}` : title,
     author: [...new Set(creators)].join('、'),
     publisher: text(el, NS_DC, 'publisher'),
-    pubdate: text(el, NS_DC, 'date'),
+    // dcterms:issued は「2026.7」のように月まで入っていることが多いので、こちらを優先して「2026-07」にそろえる
+    pubdate: normalizePubdate(text(el, 'http://purl.org/dc/terms/', 'issued') || text(el, NS_DC, 'date')),
+    volume: volumeRaw ? toHalfWidth(volumeRaw) : '',
     series,
     isChildren: text(el, NS_DCNDL, 'genre').includes('児童'),
   };
@@ -142,6 +155,12 @@ export async function lookupIsbn(isbn) {
     cCode: a?.cCode || null,
     isChildren: Boolean(b?.isChildren || (a?.cCode && a.cCode[1] === '8')),
   };
+}
+
+// シリーズ名で多めに検索する（新刊のお知らせ用）。巻数・出版日つきで返す
+export async function searchSeries(title) {
+  const items = await ndlSearch({ title, cnt: '200' });
+  return items.filter(i => i.isbn).map(i => ({ ...i, coverUrl: googleCoverUrl(i.isbn) }));
 }
 
 // 書名で検索する（S-05）。ISBN ごとに重複を除く。
