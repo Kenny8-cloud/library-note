@@ -263,10 +263,16 @@ export async function reservationPlan() {
     const wishes = await wishesOf(child.id);
     const wishedIds = new Set(wishes.map(w => w.bookId));
     const reading = (await seriesStatusOf(child.id)).filter(s => s.status === 'reading');
-    const series = reading
-      .filter(s => s.next && !wishedIds.has(s.next.id))
-      .map(s => ({ kind: 'series', key: `s:${child.id}:${s.next.id}`, childId: child.id, book: s.next, series: s.series }));
-    const pending = wishes.filter(w => w.status !== 'reserved')
+    // シリーズの次の巻。借りたい本リストに入っている巻も、ここに「シリーズの続き」として出す
+    const nextOf = new Map(reading.filter(s => s.next).map(s => [s.next.id, s]));
+    const pendingWishes = wishes.filter(w => w.status !== 'reserved');
+    const series = [
+      ...reading.filter(s => s.next && !wishedIds.has(s.next.id))
+        .map(s => ({ kind: 'series', key: `s:${child.id}:${s.next.id}`, childId: child.id, book: s.next, series: s.series })),
+      ...pendingWishes.filter(w => nextOf.has(w.bookId))
+        .map(w => ({ kind: 'wish', key: `w:${w.id}`, childId: child.id, book: w.book, wish: w, series: nextOf.get(w.bookId).series })),
+    ].sort((a, b) => a.series.title.localeCompare(b.series.title, 'ja'));
+    const pending = pendingWishes.filter(w => !nextOf.has(w.bookId))
       .map(w => ({ kind: 'wish', key: `w:${w.id}`, childId: child.id, book: w.book, wish: w }));
     const reserved = wishes.filter(w => w.status === 'reserved');
     // 次の巻がまだ登録されていないシリーズ（シリーズ詳細で追加してもらう）

@@ -26,7 +26,7 @@ export default async function reserve(root, ctx) {
       ${cover(it.book)}
       <div class="t"><b>${esc(it.book.title)}</b>
         ${firstChildOf.get(it.book.id).id !== it.childId ? `<span class="badge">${esc(firstChildOf.get(it.book.id).name)}と同じ本</span>` : ''}
-        <span class="muted small">${it.kind === 'series'
+        <span class="muted small">${it.series
           ? esc(`${it.series.title}${it.book.volume ? ` ${it.book.volume}巻` : ''}`)
           : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ' }[it.wish.source] || '手動'}</span>`}</span></div>
     </label>`;
@@ -42,7 +42,10 @@ export default async function reserve(root, ctx) {
         <section class="kid-sec">
           <h3 class="sec"><span class="dot" style="background:${esc(p.child.color)}"></span>${esc(p.child.name)}</h3>
           ${p.series.length ? `<h4 class="sub-h">シリーズの続き</h4>${p.series.map(row).join('')}` : ''}
-          ${p.needVolume.map(s => `<a class="note" href="#/series/${esc(s.series.id)}">「${esc(s.series.title)}」は次の巻が未登録です。シリーズに追加すると候補に出ます ›</a>`).join('')}
+          ${p.needVolume.length ? `<details class="reserved"><summary class="small">次の巻が未登録のシリーズ ${p.needVolume.length}件（最新巻まで読んだシリーズを含む）</summary>
+            ${p.needVolume.map(s => `<a class="note" href="#/series/${esc(s.series.id)}">「${esc(s.series.title)}」 ${s.readCount}冊読了 ›</a>`).join('')}
+            <p class="muted small">続きが出ていれば、シリーズの画面で追加すると候補に出ます。読み終えたシリーズは「完了」にすると、ここに出なくなります。</p>
+          </details>` : ''}
           ${p.pending.length ? `<h4 class="sub-h">借りたい本</h4>${p.pending.map(row).join('')}` : ''}
           ${!p.series.length && !p.pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
           ${p.reserved.length ? `<details class="reserved"><summary class="small">予約済み（まだ借りていない） ${p.reserved.length}冊</summary>
