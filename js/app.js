@@ -111,5 +111,13 @@ export const setChild = rememberKid;
 render();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('./sw.js').catch(() => { /* オフライン対応なしでも動く */ });
+  // 新しい版が有効になったら、1回だけ読み込み直して新しいファイルに切り替える
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+    .then(reg => reg.update())
+    .catch(() => { /* オフライン対応なしでも動く */ });
 }

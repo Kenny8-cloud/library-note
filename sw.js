@@ -1,6 +1,7 @@
 // オフラインでも起動できるよう、アプリのファイルをキャッシュする。
-// ファイルを更新したら VERSION を上げる（古いキャッシュが消え、新しいファイルが使われる）。
-const VERSION = 'v2';
+// 通信できるときは常にネットワークの最新版を使い、つながらないときだけキャッシュを使う。
+// ファイルを追加したら FILES に加え、VERSION を上げる。
+const VERSION = 'v3';
 const CACHE = `library-log-${VERSION}`;
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
@@ -12,7 +13,10 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // ブラウザのHTTPキャッシュに残った古いファイルを拾わないよう、cache: 'reload' で取り直す
+  e.waitUntil(caches.open(CACHE)
+    .then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -21,11 +25,19 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
-// アプリのファイルはキャッシュを優先し、書誌データや表紙画像はネットワークから取る
+// アプリのファイルはネットワークを優先し、取れたらキャッシュも更新する。書誌データや表紙画像は扱わない
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   const isAppFile = url.origin === location.origin || url.href.startsWith('https://unpkg.com/@zxing/');
   if (!isAppFile) return;
-  e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request)));
+  e.respondWith(fetch(e.request, { cache: 'no-cache' })
+    .then(res => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+      }
+      return res;
+    })
+    .catch(() => caches.match(e.request, { ignoreSearch: true })));
 });
