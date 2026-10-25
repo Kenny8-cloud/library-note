@@ -3,6 +3,8 @@ import * as lib from '../library.js';
 import { format as formatIsbn } from '../isbn.js';
 import { esc, cover, formatDate, today, toast } from '../ui.js';
 import { topBack } from '../app.js';
+import { searchTitle } from '../biblio.js';
+import { searchParts } from '../ocr.js';
 
 export default async function book(root, ctx, [bookId]) {
   const b = await lib.getBook(bookId);
@@ -44,6 +46,17 @@ export default async function book(root, ctx, [bookId]) {
         <button class="btn" type="submit">保存</button>
       </form>
 
+      <details class="card" id="lookup" ${b.isbn ? '' : 'open'}>
+        <summary><h4 style="display:inline">${b.isbn ? '別の本に付け直す（図書館のデータで探す）' : '図書館のデータで本を探す'}</h4></summary>
+        ${b.isbn ? '' : '<p class="muted small">この本はまだ特定できていません。正しい本を選ぶと、表紙や作者が付きます。</p>'}
+        <form class="search-bar" id="lookup-form" style="margin-top:8px">
+          <input class="input" name="q" value="${esc(b.title)}" autocomplete="off">
+          <button class="btn sm" type="submit">検索</button>
+        </form>
+        <p class="muted small">見つからないときは、書名の一部やシリーズ名だけにして探してください。</p>
+        <div id="lookup-results"></div>
+      </details>
+
       <div class="card"><h4>シリーズ</h4>${series ? `<a class="link" href="#/series/${esc(series.id)}">${esc(series.title)}${b.volume ? `（${b.volume}巻）` : ''} ›</a>` : '<span class="muted">なし（「編集」から設定できます）</span>'}</div>
 
       <div class="card">
@@ -73,6 +86,52 @@ export default async function book(root, ctx, [bookId]) {
     if (f.get('hideCover')) b.coverUrl = null;
     await lib.setBookSeries(b, String(f.get('series') || ''), f.get('volume'));
     toast('保存しました');
+    ctx.refresh();
+  });
+
+  // 図書館のデータで探して、この本に付け直す。括弧の前・中・後ろの言葉でも同時に探す
+  let found = [];
+  const resultsEl = root.querySelector('#lookup-results');
+  root.querySelector('#lookup-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const q = e.target.q.value.trim();
+    if (!q) return;
+    resultsEl.innerHTML = '<p class="muted">検索中…（10秒ほどかかることがあります）</p>';
+    const words = [...new Set([q, ...searchParts(q)])].slice(0, 5);
+    const lists = await Promise.all(words.map(w => searchTitle(w).catch(() => null)));
+    if (lists.every(l => l === null)) {
+      resultsEl.innerHTML = '<p class="alert">図書館のデータに接続できませんでした。少し待ってからもう一度お試しください。</p>';
+      return;
+    }
+    // 検索した言葉に近い順に並べる（2文字ずつの組がどれだけ重なるか）
+    const norm = s => String(s || '').normalize('NFKC').replace(/[\s・!?、。,.「」『』()〜~ー\-:]/g, '');
+    const grams = s => { const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; };
+    const qg = grams(norm(q));
+    const near = c => { const g = grams(norm(c.title)); let hit = 0; g.forEach(x => qg.has(x) && hit++); return (2 * hit) / (g.size + qg.size || 1) + (c.isChildren ? 0.05 : 0); };
+    const seen = new Set();
+    found = lists.flat().filter(c => c && c.isbn && !seen.has(c.isbn) && seen.add(c.isbn))
+      .sort((x, y) => near(y) - near(x)).slice(0, 20);
+    resultsEl.innerHTML = found.length ? found.map((c, i) => `<div class="row">
+        ${cover(c)}
+        <div class="t"><b>${esc(c.title)}</b><span class="muted small">${esc([c.author, c.publisher, (c.pubdate || '').slice(0, 4)].filter(Boolean).join(' ／ '))}</span></div>
+        <button class="btn sm" data-pickbook="${i}">これ</button>
+      </div>`).join('') : '<p class="muted">見つかりませんでした。言葉を短くして探してみてください。</p>';
+  });
+  resultsEl.addEventListener('click', async e => {
+    const pick = e.target.closest('[data-pickbook]');
+    if (!pick) return;
+    const c = found[pick.dataset.pickbook];
+    const existing = await lib.bookByIsbn(c.isbn);
+    if (existing && existing.id !== b.id) {
+      // 同じ本がすでに本棚にあれば、そちらにまとめる（貸出記録は消えない）
+      await lib.mergeBook(b.id, existing.id);
+      toast('本棚にある同じ本にまとめました');
+      ctx.go(`book/${existing.id}`);
+      return;
+    }
+    await lib.updateBook({ ...b, isbn: c.isbn, title: c.title, author: c.author || b.author, publisher: c.publisher || b.publisher,
+      pubdate: c.pubdate || b.pubdate, coverUrl: c.coverUrl || null });
+    toast('本の情報を付け直しました');
     ctx.refresh();
   });
 

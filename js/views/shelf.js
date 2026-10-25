@@ -91,6 +91,7 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
         <div class="chips" id="who">
           <button class="chip ${state.who ? '' : 'on'}" data-who="">全員</button>
           ${ctx.children.map(c => `<button class="chip ${state.who === c.id ? 'on' : ''}" data-who="${esc(c.id)}"><span class="dot" style="background:${esc(c.color)}"></span> ${esc(c.name)}</button>`).join('')}
+          <button class="chip ${state.who === 'unknown' ? 'on' : ''}" data-who="unknown">？ 本が未特定</button>
         </div>
         <div id="list"></div>`}
     </main>
@@ -99,7 +100,9 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   if (isSeries) return;
   const q = root.querySelector('#q');
   const draw = () => {
-    const list = state.who ? all.filter(l => l.kids.some(k => k.id === state.who)) : all;
+    // 「本が未特定」は、ISBN がなく書名だけで登録された本（本の詳細で図書館のデータから付け直せる）
+    const list = state.who === 'unknown' ? all.filter(l => !l.book.isbn)
+      : state.who ? all.filter(l => l.kids.some(k => k.id === state.who)) : all;
     root.querySelector('#list').innerHTML = historyHtml(list, state.q, seriesNames, state.limit);
   };
   q.addEventListener('input', () => { state.q = q.value; state.limit = PAGE; draw(); });
