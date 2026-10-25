@@ -37,9 +37,12 @@ export default async function receipt(root, ctx) {
       </div>
       <div id="crop" hidden class="card stack">
         <h4>書名が並んでいる範囲を選ぶ</h4>
-        <div class="crop-box"><img id="preview" alt="レシート"><div class="crop-mask top"></div><div class="crop-mask bottom"></div></div>
-        <label class="field">上のはし<input type="range" id="top" min="0" max="90" value="0"></label>
-        <label class="field">下のはし<input type="range" id="bottom" min="10" max="100" value="100"></label>
+        <p class="muted small">赤い線をつまんで上下に動かし、書名が並んでいる部分を囲んでください。</p>
+        <div class="crop-box"><img id="preview" alt="レシート"><div class="crop-mask top"></div><div class="crop-mask bottom"></div>
+          <div class="crop-handle" data-edge="top" aria-label="上のはし"><span>⇕</span></div>
+          <div class="crop-handle" data-edge="bottom" aria-label="下のはし"><span>⇕</span></div>
+        </div>
+        <input type="hidden" id="top" value="0"><input type="hidden" id="bottom" value="100">
         <button class="btn" id="read">この範囲を読み取る</button>
         <p class="muted small" id="ocr-status"></p>
       </div>
@@ -66,21 +69,44 @@ export default async function receipt(root, ctx) {
   const status = $('#ocr-status');
 
   const updateMask = () => {
-    let t = Number($('#top').value), b = Number($('#bottom').value);
-    if (b - t < 10) { b = Math.min(100, t + 10); $('#bottom').value = b; }
+    const t = Number($('#top').value), b = Number($('#bottom').value);
     root.querySelector('.crop-mask.top').style.height = `${t}%`;
     root.querySelector('.crop-mask.bottom').style.height = `${100 - b}%`;
+    root.querySelector('.crop-handle[data-edge="top"]').style.top = `${t}%`;
+    root.querySelector('.crop-handle[data-edge="bottom"]').style.top = `${b}%`;
   };
-  $('#top').addEventListener('input', updateMask);
-  $('#bottom').addEventListener('input', updateMask);
+
+  // 赤い線（つまみ）を指でドラッグして範囲を決める。上下の線は 5% 以上あける
+  const box = root.querySelector('.crop-box');
+  let dragging = null;
+  box.addEventListener('pointerdown', e => {
+    const h = e.target.closest('.crop-handle');
+    if (!h) return;
+    e.preventDefault();
+    dragging = h.dataset.edge;
+    try { h.setPointerCapture(e.pointerId); } catch { /* 指が離れた直後などは捕まえられないが、そのまま動かせる */ }
+  });
+  box.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const r = box.getBoundingClientRect();
+    let p = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10;
+    p = Math.max(0, Math.min(100, p));
+    if (dragging === 'top') $('#top').value = Math.min(p, Number($('#bottom').value) - 5);
+    else $('#bottom').value = Math.max(p, Number($('#top').value) + 5);
+    updateMask();
+  });
+  const stop = () => { dragging = null; };
+  box.addEventListener('pointerup', stop);
+  box.addEventListener('pointercancel', stop);
 
   const onFile = async e => {
     const file = e.target.files[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
     img = new Image();
+    const loaded = new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
     img.src = url;
-    try { await img.decode(); } catch { toast('写真を読み込めませんでした'); return; }
+    try { await loaded; } catch { toast('写真を読み込めませんでした'); return; }
     $('#preview').src = url;
     $('#crop').hidden = false;
     // レシートの上の方は日付や見出し、下の方は広告なので、最初は真ん中あたりを選んでおく
