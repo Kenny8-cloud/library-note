@@ -1,7 +1,7 @@
 // オフラインでも起動できるよう、アプリのファイルをキャッシュする。
 // 通信できるときは常にネットワークの最新版を使い、つながらないときだけキャッシュを使う。
 // ファイルを追加したら FILES に加え、VERSION を上げる。
-const VERSION = 'v16';
+const VERSION = 'v17';
 const CACHE = `library-log-${VERSION}`;
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',

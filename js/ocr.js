@@ -69,21 +69,43 @@ export async function recognize(canvas, onProgress) {
 const KANA = /[぀-ヿ一-鿿]/;
 
 // 認識結果から書名の行を取り出す。川崎市立図書館のレシートは「1 書名」「資料ID (返却期限)」の2行で1冊
+// 書名の行を整える: 先頭の番号（1 や l、| と読み違えたものも）を外し、日本語の間の空白を詰め、後ろの（出版社・叢書名）を外す
+function cleanTitle(raw) {
+  let t = raw.replace(/^[\s_|\-—–'"“”‘’.,、。:;!]*([0-9lI|]{1,2}[\s.、:]+)?/, '');
+  // Tesseract は文字の間に空白を入れるので、日本語の間の空白は詰める
+  t = t.replace(/(?<=[぀-ヿ一-鿿])\s+(?=[぀-ヿ一-鿿])/g, '');
+  t = t.replace(/\s*[（(].*$/, '').replace(/[|_]+/g, '').trim();
+  return t;
+}
+
+// 資料番号の行（例: 430019403905 (21/08/27)）。数字は日本語より正しく読めるので、書名を見つける手がかりにする
+const ID_LINE = /\d{8,}/;
+
 export function parseReceipt(text) {
   const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const titles = [];
-  for (const raw of lines) {
-    const m = raw.replace(/^[_|\-—–'"“”‘’.,、。]+\s*/, '').match(/^(\d{1,2})\s+(.+)$/);
-    if (!m || !KANA.test(m[2])) continue;
-    // Tesseract は文字の間に空白を入れるので、日本語の間の空白は詰める
-    let t = m[2].replace(/(?<=[぀-ヿ一-鿿])\s+(?=[぀-ヿ一-鿿])/g, '');
-    // 書名の後ろの（出版社・叢書名）は検索の邪魔になるので外す
-    t = t.replace(/\s*[（(].*$/, '').replace(/[|_]+/g, '').trim();
-    if (t.length >= 2) titles.push({ no: Number(m[1]), title: t });
-  }
-  // 同じ番号が2回出たら最初のものを使う
-  const seen = new Set();
-  const list = titles.filter(x => !seen.has(x.no) && seen.add(x.no));
+  const used = new Set();
+  // 1) 資料番号の行の、すぐ上の行を書名とみなす（先頭の番号が読めていなくても拾える）
+  lines.forEach((line, i) => {
+    if (!ID_LINE.test(line.replace(/\s/g, ''))) return;
+    for (let j = i - 1; j >= 0 && j >= i - 2; j--) {
+      if (ID_LINE.test(lines[j].replace(/\s/g, ''))) break;
+      if (!KANA.test(lines[j])) continue;
+      const t = cleanTitle(lines[j]);
+      if (t.length >= 2 && !used.has(j)) { titles.push({ line: j, title: t }); used.add(j); }
+      break;
+    }
+  });
+  // 2) 「番号 書名」の形の行も拾う（資料番号の行が読めなかった本のため）
+  lines.forEach((line, i) => {
+    if (used.has(i)) return;
+    const m = line.replace(/^[_|\-—–'"“”‘’.,、。]+\s*/, '').match(/^(\d{1,2})\s+(.+)$/);
+    if (!m || !KANA.test(m[2]) || ID_LINE.test(line.replace(/\s/g, ''))) return;
+    const t = cleanTitle(line);
+    if (t.length >= 2) { titles.push({ line: i, title: t }); used.add(i); }
+  });
+  // レシートの順に並べる
+  const list = titles.sort((a, b) => a.line - b.line).map((x, k) => ({ no: k + 1, title: x.title }));
   // 返却期限（例: 21/08/27）が読めたら、その14日前を借りた日の目安にする
   const due = text.replace(/\s/g, '').match(/\((\d{2})[\/ノ](\d{2})[\/ノ](\d{2})\)/);
   return { titles: list, due: due ? `20${due[1]}-${due[2]}-${due[3]}` : null };

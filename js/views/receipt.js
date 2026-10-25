@@ -49,6 +49,13 @@ export default async function receipt(root, ctx) {
         <button class="btn ghost sm" id="use-paste">この文字から書名を探す</button>
       </details>
       <div id="result"></div>
+      <div id="extra" hidden class="stack">
+        <form class="search-bar" id="add-row">
+          <input class="input" name="title" placeholder="読み取れなかった本の書名" autocomplete="off">
+          <button class="btn sm" type="submit">＋ 追加</button>
+        </form>
+        <details class="card"><summary class="small">読み取った文字を見る</summary><pre class="raw-text" id="raw"></pre></details>
+      </div>
     </main>
     <footer class="foot" id="foot" hidden>
       <label class="field inline">借りた日<input type="date" id="date" value="${today()}" max="${today()}"></label>
@@ -118,6 +125,8 @@ export default async function receipt(root, ctx) {
   });
 
   async function handleText(text, parsed = parseReceipt(text)) {
+    $('#extra').hidden = false;
+    $('#raw').textContent = text || $('#paste').value;
     if (!parsed.titles.length) {
       status.textContent = '書名を見つけられませんでした。範囲を変えるか、撮り直してください。';
       return;
@@ -188,6 +197,16 @@ export default async function receipt(root, ctx) {
     $('#save').textContent = `登録する（${n}冊）`;
     $('#save').disabled = !n || rows.some(r => r.include && r.candidates === null);
   }
+
+  // 読み取れなかった本は、書名を入れて追加できる（図書館のデータで探す）
+  $('#add-row').addEventListener('submit', e => {
+    e.preventDefault();
+    const title = e.target.title.value.trim();
+    if (!title) return;
+    rows.push({ title, candidates: null, pick: -1, kids: new Set(kids.map(k => k.id)), include: true });
+    e.target.title.value = '';
+    find(rows.length - 1);
+  });
 
   $('#result').addEventListener('change', e => {
     const t = e.target;
