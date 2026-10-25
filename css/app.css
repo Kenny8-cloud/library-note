@@ -224,6 +224,18 @@ details summary::-webkit-details-marker { display: none; }
 .back-link { color: var(--accent); font-size: 13px; }
 select.input { appearance: auto; }
 
+/* ---- レシート ---- */
+.crop-box { position: relative; border-radius: 8px; overflow: hidden; }
+.crop-box img { display: block; width: 100%; }
+.crop-mask { position: absolute; left: 0; right: 0; background: rgba(0,0,0,.55); }
+.crop-mask.top { top: 0; border-bottom: 2px solid #ff5a4e; }
+.crop-mask.bottom { bottom: 0; border-top: 2px solid #ff5a4e; }
+.receipt-row { display: flex; flex-direction: column; gap: 8px; }
+.receipt-row.off { opacity: .5; }
+.receipt-row .t .input { font-size: 15px; padding: 6px 8px; }
+.kid-pick { display: flex; gap: 6px; flex-wrap: wrap; }
+textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
+
 #toast {
   position: fixed; left: 50%; bottom: calc(84px + var(--safe-b)); transform: translate(-50%, 20px); opacity: 0;
   background: #333; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; max-width: calc(100% - 32px);

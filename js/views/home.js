@@ -37,7 +37,7 @@ export default async function home(root, ctx) {
         : `<p class="muted">まだ記録がありません。図書館で借りたら、スキャンして登録しましょう。</p>`}
       </div>
       <div class="actions">
-        <a class="action" href="#/scan"><span>◉</span><b>借りた本を登録</b><small>バーコードをスキャン</small></a>
+        <a class="action" href="#/receipt"><span>🧾</span><b>借りた本を登録</b><small>レシートを撮影</small></a>
         <a class="action" href="#/scan/check"><span>？</span><b>借りたことある？</b><small>図書館で調べる</small></a>
       </div>
     </main>

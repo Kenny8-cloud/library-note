@@ -5,7 +5,8 @@ const NS_DC = 'http://purl.org/dc/elements/1.1/';
 const NS_DCNDL = 'http://ndl.go.jp/dcndl/terms/';
 const NS_XSI = 'http://www.w3.org/2001/XMLSchema-instance';
 
-async function fetchWithTimeout(url, ms = 8000) {
+// 国会図書館サーチは、初めての検索語だと10秒ほどかかることがあるので長めに待つ
+async function fetchWithTimeout(url, ms = 20000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {

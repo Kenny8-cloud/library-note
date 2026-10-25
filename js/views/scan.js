@@ -22,7 +22,8 @@ export default async function scan(root, ctx, [mode]) {
       <div class="seg">
         <a href="#/scan" class="${isCheck ? '' : 'on'}">登録</a>
         <a href="#/scan/check" class="${isCheck ? 'on' : ''}">借りたことある？</a>
-      </div>`}
+      </div>
+      ${isCheck ? '' : `<a class="btn ghost" href="#/receipt">🧾 レシートからまとめて登録</a>`}`}
       <div class="camera">
         <video muted playsinline></video>
         <div class="guide"></div>
