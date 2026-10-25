@@ -224,6 +224,8 @@ details summary::-webkit-details-marker { display: none; }
 .back-link { color: var(--accent); font-size: 13px; }
 select.input { appearance: auto; }
 
+.hit-count { font-size: 14px; background: var(--accent-soft); color: var(--accent); border-radius: 8px; padding: 6px 10px; }
+
 /* ---- レシート ---- */
 .crop-box { position: relative; border-radius: 8px; overflow: hidden; }
 .crop-box img { display: block; width: 100%; }
