@@ -268,6 +268,13 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: 13px; displa
   border-radius: 6px; padding: 1px 8px; font-family: var(--serif); font-size: 12px; font-weight: 700; letter-spacing: .1em; opacity: .85;
 }
 
+/* これまでに借りた本は貸出カード風の枠の中に入れて一番上に置く */
+.holdings-card { padding: 4px 0 0; background-image: none; }
+.holdings-card .holdings { box-shadow: none; background: transparent; padding: 14px 18px 16px; }
+.holdings-card .holdings .num { font-size: 36px; }
+.reserve-row .card-icon { font-size: 22px; width: 31px; text-align: center; }
+.reserve-row .go { color: var(--accent); font-size: 13px; font-weight: 600; white-space: nowrap; }
+
 /* 蔵書数 */
 .holdings { display: flex; align-items: center; gap: 14px; background: var(--paper); border-radius: 6px; padding: 14px 18px; box-shadow: 0 1px 0 var(--line); }
 .holdings .spine { display: flex; gap: 3px; align-items: flex-end; }

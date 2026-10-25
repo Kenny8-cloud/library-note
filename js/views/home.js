@@ -1,7 +1,7 @@
 // S-02 ホーム。図書館の雰囲気（貸出カード・木の書棚・目録の引き出し）で、予約の時期、蔵書数、最近借りた本を見せる。
 // 本棚と同じく、借りた本の冊数と最近借りた本は家族全体で表示する
 import * as lib from '../library.js';
-import { esc, cover, formatDate, today } from '../ui.js';
+import { esc, cover, formatDate } from '../ui.js';
 import { tabs } from '../app.js';
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
@@ -12,11 +12,8 @@ export default async function home(root) {
   const latest = history.filter(l => l.borrowedAt === latestDate).slice(0, 12);
   const bookCount = new Set(history.map(l => l.bookId)).size;
 
-  const { lastReservedAt } = await lib.reserveSettings();
   const plan = await lib.reservationPlan();
   const candidates = plan.reduce((n, p) => n + p.series.length + p.pending.length, 0);
-  const days = lastReservedAt ? Math.floor((new Date(today()) - new Date(lastReservedAt)) / 86400000) : null;
-  const due = days === null || days >= 14;
   const now = new Date();
 
   root.innerHTML = `
@@ -28,27 +25,19 @@ export default async function home(root) {
       <div class="ornament">❦</div>
     </header>
     <main class="home-body">
-      <a class="due-card" href="#/reserve">
-        <div class="label">予約のめやす</div>
-        ${due ? '<span class="stamp">予約の時期</span>' : ''}
-        <div class="cols">
-          <div>
-            <div class="cap">${days === null ? 'まだ予約していません' : '前回の予約から'}</div>
-            <div class="num ${days === null ? 'word' : ''}">${days === null ? '予約候補' : `${days}<small>日</small>`}</div>
-          </div>
-          <div class="side">
-            <div class="cap">予約候補（家族）</div>
-            <div class="num">${candidates}<small>冊</small></div>
-          </div>
+      <div class="due-card holdings-card">
+        <div class="holdings">
+          <div class="spine"><i style="height:30px"></i><i style="height:38px"></i><i style="height:26px"></i></div>
+          <div class="t"><h4>これまでに借りた本</h4><div class="num">${bookCount.toLocaleString()}<small>冊</small></div></div>
+          <a href="#/shelf">本棚へ ›</a>
         </div>
+      </div>
+
+      <a class="holdings reserve-row" href="#/reserve">
+        <span class="card-icon">🔖</span>
+        <div class="t"><h4>予約候補</h4><div class="num">${candidates}<small>冊</small></div></div>
         <span class="go">予約へ ›</span>
       </a>
-
-      <div class="holdings">
-        <div class="spine"><i style="height:30px"></i><i style="height:38px"></i><i style="height:26px"></i></div>
-        <div class="t"><h4>これまでに借りた本</h4><div class="num">${bookCount.toLocaleString()}<small>冊</small></div></div>
-        <a href="#/shelf">本棚へ ›</a>
-      </div>
 
       <section class="bookshelf-card">
         <h3>最近借りた本${latest.length ? `<small>${esc(formatDate(latestDate))} に${latest.length}冊</small>` : ''}</h3>
