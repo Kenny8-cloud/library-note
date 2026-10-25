@@ -133,6 +133,23 @@ export async function historyOf(childId) {
     .sort((a, b) => (b.borrowedAt || '').localeCompare(a.borrowedAt || '') || b.createdAt.localeCompare(a.createdAt));
 }
 
+// 家族全体の履歴。同じ本を同じ日に兄弟で借りた記録は1つにまとめ、誰が借りたか（kids）を持たせる
+export async function familyHistory() {
+  const kidsById = new Map((await children()).map(c => [c.id, c]));
+  const books = new Map((await db.all('books')).map(b => [b.id, b]));
+  const merged = new Map();
+  for (const l of await db.all('loans')) {
+    const book = books.get(l.bookId);
+    if (!book || !kidsById.has(l.childId)) continue;
+    const k = `${l.bookId}|${l.borrowedAt || ''}`;
+    if (!merged.has(k)) merged.set(k, { bookId: l.bookId, borrowedAt: l.borrowedAt, createdAt: l.createdAt, book, kids: [] });
+    const m = merged.get(k);
+    if (!m.kids.some(c => c.id === l.childId)) m.kids.push(kidsById.get(l.childId));
+  }
+  return [...merged.values()]
+    .sort((a, b) => (b.borrowedAt || '').localeCompare(a.borrowedAt || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
 export async function addLoan(childId, bookId, borrowedAt = today()) {
   const loan = { id: db.newId(), childId, bookId, borrowedAt, createdAt: new Date().toISOString() };
   await db.put('loans', loan);

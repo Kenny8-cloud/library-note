@@ -71,7 +71,7 @@ export default async function importView(root, ctx) {
       const titles = new Set(entries.map(x => toIsbn13(x.row.isbn) || x.row.title));
       const noIsbn = entries.filter(x => !toIsbn13(x.row.isbn)).length;
       const wishes = entries.filter(x => x.row.kind === 'wish').length;
-      const fixCount = entries.filter(x => x.row.kind === 'fix').length;
+      const fixCount = entries.filter(x => x.row.kind === 'fix' || x.row.kind === 'series').length;
       const count = name => rows.filter(r => namesOf(r).includes(name)).length;
       preview.innerHTML = `
         ${unknown.length ? `<div class="card stack is-warn">
@@ -125,9 +125,19 @@ export default async function importView(root, ctx) {
       byTitle.delete(key(r.match_title, ''));
     }
 
+    // kind=series: シリーズが未設定の本（ISBN か書名で探す）にシリーズを付ける
+    const allBooks = await lib.allBooks();
+    for (const r of rows.filter(r => r.kind === 'series' && r.series)) {
+      const isbn = toIsbn13(r.isbn);
+      const book = isbn ? allBooks.find(b => b.isbn === isbn) : allBooks.find(b => !b.isbn && b.title === r.title);
+      if (!book || book.seriesId) continue;
+      await lib.setBookSeries(book, r.series, r.volume || null);
+      fixed++;
+    }
+
     for (let i = 0; i < plan.length; i++) {
       const { row, kids } = plan[i];
-      if (row.kind === 'fix') continue;
+      if (row.kind === 'fix' || row.kind === 'series') continue;
       const isbn = toIsbn13(row.isbn);
       let book = isbn ? await lib.bookByIsbn(isbn) : byTitle.get(key(row.title, row.author));
       if (!book) {
@@ -154,7 +164,7 @@ export default async function importView(root, ctx) {
       }
       if (i % 20 === 0) progress.textContent = `取り込み中… ${i + 1} / ${plan.length}`;
     }
-    toast(fixes.length && !added && !wished ? `${fixed}冊の本の情報を直しました`
+    toast(rows.some(r => r.kind === 'fix' || r.kind === 'series') && !added && !wished ? `${fixed}冊の本の情報を直しました`
       : `${added}件の貸出${wished ? `と${wished}件の借りたい本` : ''}を取り込みました${fixed ? `、${fixed}冊の本の情報を直しました` : ''}${skipped ? `（重複 ${skipped}件はスキップ）` : ''}`);
     ctx.go('shelf');
   });

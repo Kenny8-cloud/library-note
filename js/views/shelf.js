@@ -23,7 +23,7 @@ function historyHtml(history, q, seriesNames) {
   const count = needle
     ? `<p class="hit-count">「${esc(q.trim())}」の検索結果: <b>${books}</b>冊${list.length > books ? `（借りた回数 ${list.length}回）` : ''}</p>`
     : `<p class="muted small">これまでに ${books}冊${list.length > books ? `（借りた回数 ${list.length}回）` : ''}</p>`;
-  if (!list.length) return `${count}<p class="empty">「${esc(q)}」に当てはまる本はありません。<br>ほかのお子さんが借りた本は、上の名前を切り替えると探せます。</p>`;
+  if (!list.length) return `${count}<p class="empty">「${esc(q)}」に当てはまる本はありません。</p>`;
 
   const groups = new Map();
   for (const l of list) {
@@ -34,7 +34,8 @@ function historyHtml(history, q, seriesNames) {
   return count + [...groups].map(([label, loans]) => `
     <h3 class="month">${esc(label)}<small>${loans.length}冊</small></h3>
     <div class="shelf">${loans.map(l => `
-      <a href="#/book/${esc(l.book.id)}">${cover(l.book)}<span>${esc(l.book.title)}</span></a>`).join('')}
+      <a href="#/book/${esc(l.book.id)}">${cover(l.book)}<span>${esc(l.book.title)}</span>
+        <i class="who">${(l.kids || []).map(k => `<b style="background:${esc(k.color)}" title="${esc(k.name)}"></b>`).join('')}</i></a>`).join('')}
     </div>`).join('');
 }
 
@@ -64,13 +65,16 @@ async function seriesHtml(childId, filter) {
     <p class="muted small">本棚の本をまとめてシリーズにできます。シリーズにすると、次に借りる巻が予約候補に出ます。</p>`;
 }
 
+// 履歴は家族共通。だれが借りたかは色の点で示し、必要なら子供ごとに絞り込める。
+// シリーズの読み進め（次の巻）は子供ごとに違うので、シリーズのタブは子供ごとのまま
 export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   const isSeries = tab === 'series';
-  const history = isSeries ? [] : await lib.historyOf(ctx.childId);
+  const all = isSeries ? [] : await lib.familyHistory();
   const seriesNames = isSeries ? new Map() : new Map((await lib.seriesList()).map(s => [s.id, s.title]));
+  let who = '';
 
   root.innerHTML = `
-    ${topKids()}
+    ${isSeries ? topKids() : topKids({ title: '本棚（家族）' })}
     <main class="body">
       <div class="seg">
         <a href="#/shelf" class="${isSeries ? '' : 'on'}">履歴</a>
@@ -78,10 +82,27 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
       </div>
       ${isSeries ? await seriesHtml(ctx.childId, filter) : `
         <input class="input" type="search" id="q" placeholder="🔍 書名・作者・シリーズ名で検索" autocomplete="off">
-        <div id="list">${historyHtml(history, '', seriesNames)}</div>`}
+        <div class="chips" id="who">
+          <button class="chip on" data-who="">全員</button>
+          ${ctx.children.map(c => `<button class="chip" data-who="${esc(c.id)}"><span class="dot" style="background:${esc(c.color)}"></span> ${esc(c.name)}</button>`).join('')}
+        </div>
+        <div id="list"></div>`}
     </main>
     ${tabs('shelf')}`;
 
+  if (isSeries) return;
   const q = root.querySelector('#q');
-  if (q) q.addEventListener('input', () => { root.querySelector('#list').innerHTML = historyHtml(history, q.value, seriesNames); });
+  const draw = () => {
+    const list = who ? all.filter(l => l.kids.some(k => k.id === who)) : all;
+    root.querySelector('#list').innerHTML = historyHtml(list, q.value, seriesNames);
+  };
+  q.addEventListener('input', draw);
+  root.querySelector('#who').addEventListener('click', e => {
+    const b = e.target.closest('[data-who]');
+    if (!b) return;
+    who = b.dataset.who;
+    root.querySelectorAll('#who .chip').forEach(c => c.classList.toggle('on', c === b));
+    draw();
+  });
+  draw();
 }
