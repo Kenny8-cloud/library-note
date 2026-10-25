@@ -89,6 +89,23 @@ export async function updateBook(book) {
   return db.put('books', book);
 }
 
+// 同じ本が2冊に分かれて登録されているとき、from の貸出・借りたい本を into に移して from を消す
+export async function mergeBook(fromId, intoId) {
+  if (fromId === intoId) return;
+  for (const l of await db.byIndex('loans', 'bookId', fromId)) {
+    const dup = (await db.byIndex('loans', 'bookId', intoId)).some(x => x.childId === l.childId && (x.borrowedAt || null) === (l.borrowedAt || null));
+    if (dup) await db.remove('loans', l.id); else await db.put('loans', { ...l, bookId: intoId });
+  }
+  for (const w of await db.all('wishlist')) {
+    if (w.bookId !== fromId) continue;
+    const dup = (await db.byIndex('wishlist', 'childId', w.childId)).some(x => x.bookId === intoId);
+    if (dup) await db.remove('wishlist', w.id); else await db.put('wishlist', { ...w, bookId: intoId });
+  }
+  const from = await db.get('books', fromId), into = await db.get('books', intoId);
+  if (from?.seriesId && into && !into.seriesId) await db.put('books', { ...into, seriesId: from.seriesId, volume: from.volume });
+  await db.remove('books', fromId);
+}
+
 export async function setBookSeries(book, seriesTitle, volume) {
   const series = await ensureSeries(seriesTitle);
   book.seriesId = series ? series.id : null;

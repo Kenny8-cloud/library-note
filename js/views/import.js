@@ -35,11 +35,12 @@ export default async function importView(root, ctx) {
 
   const preview = root.querySelector('#preview');
   let plan = null;
+  let rows = [];
 
   root.querySelector('#file').addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
-    const rows = parseCsv(await file.text());
+    rows = parseCsv(await file.text());
     if (!rows.length || !('title' in rows[0])) {
       preview.innerHTML = `<p class="alert">このファイルは読み込めません（title 列が見つかりません）。</p>`;
       return;
@@ -70,6 +71,7 @@ export default async function importView(root, ctx) {
       const titles = new Set(entries.map(x => toIsbn13(x.row.isbn) || x.row.title));
       const noIsbn = entries.filter(x => !toIsbn13(x.row.isbn)).length;
       const wishes = entries.filter(x => x.row.kind === 'wish').length;
+      const fixCount = entries.filter(x => x.row.kind === 'fix').length;
       const count = name => rows.filter(r => namesOf(r).includes(name)).length;
       preview.innerHTML = `
         ${unknown.length ? `<div class="card stack is-warn">
@@ -82,7 +84,7 @@ export default async function importView(root, ctx) {
         </div>` : ''}
         <div class="card">
           <h4>読み込んだ内容</h4>
-          <p><b>${entries.length - wishes}</b>件の貸出記録${wishes ? `、<b>${wishes}</b>件の借りたい本` : ''}（本 <b>${titles.size}</b>冊）</p>
+          <p>${fixCount ? `<b>${fixCount}</b>冊の本の情報の直し、` : ''}<b>${entries.length - wishes - fixCount}</b>件の貸出記録${wishes ? `、<b>${wishes}</b>件の借りたい本` : ''}（本 <b>${titles.size}</b>冊）</p>
           <p class="muted small">登録先: ${ctx.children.map(c => esc(c.name)).join('、')}${noIsbn ? `<br>ISBNのない本 ${noIsbn}件は、書名だけで登録します（あとで本の詳細から直せます）` : ''}</p>
           <p class="muted small">すでに登録されている記録は、二重に登録しません。借りたことのある本は、借りたい本に入れません。</p>
         </div>
@@ -107,8 +109,25 @@ export default async function importView(root, ctx) {
     const key = (title, author) => `${title}|${author || ''}`;
     const byTitle = new Map((await lib.allBooks()).filter(b => !b.isbn).map(b => [key(b.title, b.author), b]));
 
+    // kind=fix: ISBN なしで登録済みの本（書名が match_title のもの）に、見つかった ISBN や書名を付け直す
+    let fixed = 0;
+    const fixes = rows.filter(r => r.kind === 'fix' && r.match_title && toIsbn13(r.isbn));
+    for (const r of fixes) {
+      const isbn = toIsbn13(r.isbn);
+      const olds = (await lib.allBooks()).filter(b => !b.isbn && b.title === r.match_title);
+      if (!olds.length) continue;
+      const existing = await lib.bookByIsbn(isbn);
+      for (const old of olds) {
+        if (existing) await lib.mergeBook(old.id, existing.id);
+        else await lib.updateBook({ ...old, isbn, title: r.title || old.title, author: r.author || old.author, publisher: r.publisher || old.publisher, coverUrl: googleCover(isbn) });
+        fixed++;
+      }
+      byTitle.delete(key(r.match_title, ''));
+    }
+
     for (let i = 0; i < plan.length; i++) {
       const { row, kids } = plan[i];
+      if (row.kind === 'fix') continue;
       const isbn = toIsbn13(row.isbn);
       let book = isbn ? await lib.bookByIsbn(isbn) : byTitle.get(key(row.title, row.author));
       if (!book) {
@@ -135,7 +154,8 @@ export default async function importView(root, ctx) {
       }
       if (i % 20 === 0) progress.textContent = `取り込み中… ${i + 1} / ${plan.length}`;
     }
-    toast(`${added}件の貸出${wished ? `と${wished}件の借りたい本` : ''}を取り込みました${skipped ? `（重複 ${skipped}件はスキップ）` : ''}`);
+    toast(fixes.length && !added && !wished ? `${fixed}冊の本の情報を直しました`
+      : `${added}件の貸出${wished ? `と${wished}件の借りたい本` : ''}を取り込みました${fixed ? `、${fixed}冊の本の情報を直しました` : ''}${skipped ? `（重複 ${skipped}件はスキップ）` : ''}`);
     ctx.go('shelf');
   });
 }
