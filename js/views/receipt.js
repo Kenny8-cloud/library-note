@@ -145,10 +145,24 @@ export default async function receipt(root, ctx) {
     status.textContent = '内容を確かめて「登録する」を押してください。';
   }
 
+  // 1冊あたり最大60秒で探すのをやめ、書名だけで登録できる状態にする
   async function find(i) {
     const r = rows[i];
     r.candidates = null;
+    r.pick = -1;
+    r.timeout = false;
     draw();
+    const token = (r.token = {});
+    const limit = setTimeout(() => {
+      if (r.token !== token || r.candidates !== null) return;
+      r.candidates = []; r.pick = -1; r.timeout = true;
+      draw();
+    }, 60000);
+    await findInner(r, token);
+    clearTimeout(limit);
+  }
+
+  async function findInner(r, token) {
     try {
       const keep = s => s.replace(/[^぀-ヿ一-鿿A-Za-z0-9０-９ー]/g, '').trim();
       // 書名を括弧の前・中・後ろに分けて探す。図書館のデータでは「かいぞくポケット」（シリーズ名）や
@@ -173,9 +187,12 @@ export default async function receipt(root, ctx) {
           return { ...c, score: base + vol + (c.isChildren ? 0.05 : 0) };
         })
         .sort((a, b) => b.score - a.score).slice(0, 5);
+      if (r.token !== token) return;   // 探し直しが始まっていたら古い結果は捨てる
       r.candidates = list;
       r.pick = list.length && list[0].score >= 0.45 ? 0 : -1;
+      r.timeout = false;
     } catch {
+      if (r.token !== token) return;
       r.candidates = [];
       r.pick = -1;
       r.error = true;
@@ -188,7 +205,8 @@ export default async function receipt(root, ctx) {
     $('#foot').hidden = !rows.length;
     el.innerHTML = rows.map((r, i) => {
       const c = r.pick >= 0 ? r.candidates[r.pick] : null;
-      const opts = r.candidates === null ? '<p class="muted small">探しています…</p>'
+      const opts = r.candidates === null ? '<p class="muted small">探しています…（このまま登録すると書名だけで登録します）</p>'
+        : r.timeout ? '<p class="alert small">時間内に見つかりませんでした。書名だけで登録するか、「この書名で探し直す」を押してください。</p>'
         : `<select class="input" data-pick="${i}">
             ${r.candidates.map((x, j) => `<option value="${j}" ${j === r.pick ? 'selected' : ''}>${esc(x.title)}（${esc(x.author || x.publisher || '')}）</option>`).join('')}
             <option value="-1" ${r.pick === -1 ? 'selected' : ''}>${r.candidates.length ? 'どれでもない（書名だけで登録）' : '見つかりません（書名だけで登録）'}</option>
@@ -206,7 +224,8 @@ export default async function receipt(root, ctx) {
     }).join('');
     const n = rows.filter(r => r.include && r.kids.size).length;
     $('#save').textContent = `登録する（${n}冊）`;
-    $('#save').disabled = !n || rows.some(r => r.include && r.candidates === null);
+    // 探している途中の本があっても登録できる（その本は書名だけで登録する）
+    $('#save').disabled = !n;
   }
 
   // 読み取れなかった本は、書名を入れて追加できる（図書館のデータで探す）

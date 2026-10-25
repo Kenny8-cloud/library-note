@@ -6,16 +6,29 @@ const NS_DCNDL = 'http://ndl.go.jp/dcndl/terms/';
 const NS_XSI = 'http://www.w3.org/2001/XMLSchema-instance';
 
 // 国会図書館サーチは、初めての検索語だと10秒ほどかかることがあるので長めに待つ
-async function fetchWithTimeout(url, ms = 20000) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res;
-  } finally {
-    clearTimeout(timer);
-  }
+// 同時に送る問い合わせは4件まで。多すぎると iPhone で応答が返らなくなることがある
+const MAX_PARALLEL = 4;
+let running = 0;
+const waiting = [];
+async function slot(fn) {
+  if (running >= MAX_PARALLEL) await new Promise(r => waiting.push(r));
+  running++;
+  try { return await fn(); } finally { running--; waiting.shift()?.(); }
+}
+
+// 本文の読み込みまで含めて時間切れにする（ヘッダーだけ届いて本文が来ないことがあるため）
+function fetchBody(url, kind, ms = 20000) {
+  return slot(() => {
+    const ctrl = new AbortController();
+    let timer;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => { ctrl.abort(); reject(new Error('timeout')); }, ms); });
+    const work = (async () => {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return kind === 'json' ? res.json() : res.text();
+    })();
+    return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+  });
 }
 
 function toHalfWidth(s) {
@@ -40,8 +53,7 @@ function googleCoverUrl(isbn) {
 
 // ---- openBD ----
 async function fromOpenBD(isbn) {
-  const res = await fetchWithTimeout(`https://api.openbd.jp/v1/get?isbn=${isbn}`);
-  const [item] = await res.json();
+  const [item] = await fetchBody(`https://api.openbd.jp/v1/get?isbn=${isbn}`, 'json');
   if (!item || !item.summary) return null;
   const s = item.summary;
   const subjects = item.onix?.DescriptiveDetail?.Subject || [];
@@ -100,8 +112,7 @@ function parseNdlItem(el) {
 
 async function ndlSearch(params) {
   const qs = new URLSearchParams({ cnt: '30', mediatype: 'books', ...params });
-  const res = await fetchWithTimeout(`https://ndlsearch.ndl.go.jp/api/opensearch?${qs}`);
-  const xml = new DOMParser().parseFromString(await res.text(), 'application/xml');
+  const xml = new DOMParser().parseFromString(await fetchBody(`https://ndlsearch.ndl.go.jp/api/opensearch?${qs}`, 'text'), 'application/xml');
   return [...xml.getElementsByTagName('item')].map(parseNdlItem);
 }
 
