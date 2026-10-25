@@ -3,11 +3,12 @@ import * as lib from '../library.js';
 import { esc, cover, formatDate, today } from '../ui.js';
 import { topKids, tabs } from '../app.js';
 
+// 本棚と同じく、借りた本の冊数と最近借りた本は家族全体で表示する
 export default async function home(root, ctx) {
-  const history = await lib.historyOf(ctx.childId);
+  const history = await lib.familyHistory();
   const latestDate = history[0]?.borrowedAt;
   const latest = history.filter(l => l.borrowedAt === latestDate).slice(0, 10);
-  const name = ctx.child.name;
+  const bookCount = new Set(history.map(l => l.bookId)).size;
 
   const { lastReservedAt } = await lib.reserveSettings();
   const plan = await lib.reservationPlan();
@@ -20,13 +21,13 @@ export default async function home(root, ctx) {
       <a class="card stat" href="#/reserve">
         <div>
           <h4>${days === null ? '予約' : '前回の予約から'}</h4>
-          <div class="big">${days === null ? 'まだ' : `${days}<small>日</small>`}</div>
+          <div class="big">${days === null ? '予約候補' : `${days}<small>日</small>`}</div>
           ${days === null || days >= 14 ? '<p class="alert small">そろそろ予約の時期です</p>' : ''}
         </div>
         <div class="right"><h4>予約候補（家族）</h4><div class="big">${candidates}<small>冊</small></div><span class="link small">予約へ ›</span></div>
       </a>
       <div class="card stat">
-        <div><h4>${esc(name)}がこれまでに借りた本</h4><div class="big">${history.length}<small>冊</small></div></div>
+        <div><h4>これまでに借りた本</h4><div class="big">${bookCount}<small>冊</small></div></div>
         <a class="link" href="#/shelf">本棚へ ›</a>
       </div>
       <div class="card">
@@ -38,7 +39,7 @@ export default async function home(root, ctx) {
       </div>
       <div class="actions">
         <a class="action" href="#/receipt"><span>🧾</span><b>借りた本を登録</b><small>レシートを撮影</small></a>
-        <a class="action" href="#/scan/check"><span>？</span><b>借りたことある？</b><small>図書館で調べる</small></a>
+        <a class="action" href="#/scan/check"><span>？</span><b>借りたことがあるかチェック</b><small>図書館で調べる</small></a>
       </div>
     </main>
     ${tabs('home')}`;
