@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>図書館ノートの更新</title>
+<style>
+  body { font: 16px/1.7 system-ui, -apple-system, "Hiragino Sans", sans-serif; margin: 0; padding: 32px 16px; background: #f6f5f2; color: #222; text-align: center; }
+  @media (prefers-color-scheme: dark) { body { background: #18181a; color: #ececec; } }
+  p { max-width: 420px; margin: 12px auto; }
+</style>
+</head>
+<body>
+<p id="msg">最新の版に切り替えています…</p>
+<script>
+  // 古い版のアプリ（オフライン用に保存したファイル）を消して、最新の版を読み込み直す。
+  // 登録した子供や本のデータ（IndexedDB）は消さない。
+  // このページは古い版の保存ファイルに含まれていないので、古い版が動いていても必ずネットワークから届く。
+  (async () => {
+    const msg = document.getElementById('msg');
+    try {
+      if ('serviceWorker' in navigator) {
+        for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister();
+      }
+      if ('caches' in window) {
+        for (const key of await caches.keys()) if (key.startsWith('library-log-')) await caches.delete(key);
+      }
+      msg.textContent = '最新の版に切り替えました。アプリを開きます…';
+      setTimeout(() => location.replace('./?updated=' + Date.now() + '#/settings'), 800);
+    } catch (e) {
+      msg.textContent = '切り替えに失敗しました: ' + e.message;
+    }
+  })();
+</script>
+</body>
+</html>

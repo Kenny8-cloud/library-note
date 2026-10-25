@@ -1,7 +1,7 @@
 // S-15 設定。段階1では子供の管理と、ファイルへの手動バックアップを扱う。
 import * as lib from '../library.js';
 import * as db from '../db.js';
-import { esc, KID_COLORS, toast, gradeLabel, today } from '../ui.js';
+import { esc, KID_COLORS, toast, gradeLabel, today, APP_VERSION } from '../ui.js';
 import { topBack } from '../app.js';
 import { childForm, readChildForm } from './child-form.js';
 
@@ -39,6 +39,7 @@ export default async function settings(root, ctx) {
         <label class="list-btn">ファイルから読み込む（復元）<input type="file" id="import" accept="application/json,.json" hidden></label>
       </div>
       <p class="muted small">Googleドライブへの自動バックアップは段階3で追加します。それまでは、ときどきファイルに書き出しておくと安心です。</p>
+      <p class="muted small center">図書館ノート 版 ${esc(APP_VERSION)}</p>
     </main>`;
 
   root.addEventListener('submit', async e => {
