@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '2.3（2026-10-25）';
+export const APP_VERSION = '2.4（2026-10-25）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,8 +44,11 @@ window.__coverFail = img => {
 
 export function cover(book, size = '') {
   const initial = esc((book.title || '？').slice(0, 6));
-  const first = book.coverUrl || amazonCover(book.isbn);
-  const next = book.coverUrl && book.coverUrl.includes('books.google.com') ? amazonCover(book.isbn) : '';
+  // Amazon は表紙がないと 1x1 の画像を返すので確実に見分けられる。Google の「image not available」は
+  // 端末によって大きさが違い見分けにくいため、Amazon を先に試し、なければ Google（または書誌データの表紙）にする
+  const amazon = amazonCover(book.isbn);
+  const first = amazon || book.coverUrl;
+  const next = amazon && book.coverUrl ? book.coverUrl : '';
   const img = first
     ? `<img src="${esc(first)}" data-next="${esc(next)}" alt="" loading="lazy"
         onerror="__coverFail(this)" onload="__coverLoad(this)">`

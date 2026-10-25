@@ -45,31 +45,57 @@ export default async function importView(root, ctx) {
       return;
     }
 
-    const byName = new Map(ctx.children.map(c => [c.name, c]));
-    const unknown = new Set();
-    const entries = [];
-    for (const r of rows) {
-      if (!r.title) continue;
-      const names = (r.child || ALL) === ALL ? ctx.children.map(c => c.name) : r.child.split(/[、・/]/).map(s => s.trim());
-      const kids = names.map(n => byName.get(n)).filter(Boolean);
-      names.filter(n => !byName.has(n)).forEach(n => unknown.add(n));
-      if (kids.length) entries.push({ row: r, kids });
-    }
-    const titles = new Set(entries.map(x => toIsbn13(x.row.isbn) || x.row.title));
-    const noIsbn = entries.filter(x => !toIsbn13(x.row.isbn)).length;
-    const wishes = entries.filter(x => x.row.kind === 'wish').length;
-    plan = entries;
+    const norm = s => String(s || '').normalize('NFKC').replace(/[\s　]/g, '');
+    const byName = new Map(ctx.children.map(c => [norm(c.name), c]));
+    const namesOf = r => ((r.child || ALL) === ALL ? [ALL] : r.child.split(/[、・/]/).map(s => s.trim()).filter(Boolean));
+    // CSVの名前とアプリの名前が違うとき（ひらがな・愛称など）は、どの子のことか選んでもらう
+    const unknown = [...new Set(rows.flatMap(namesOf))].filter(n => n !== ALL && !byName.has(norm(n)));
+    const nameMap = new Map();
 
-    preview.innerHTML = `
-      <div class="card">
-        <h4>読み込んだ内容</h4>
-        <p><b>${entries.length - wishes}</b>件の貸出記録${wishes ? `、<b>${wishes}</b>件の借りたい本` : ''}（本 <b>${titles.size}</b>冊）</p>
-        <p class="muted small">登録先: ${ctx.children.map(c => esc(c.name)).join('、')}${noIsbn ? `<br>ISBNのない本 ${noIsbn}件は、書名だけで登録します（あとで本の詳細から直せます）` : ''}</p>
-        ${unknown.size ? `<p class="alert">登録されていない名前があります: ${[...unknown].map(esc).join('、')}。この名前の行は取り込みません。</p>` : ''}
-        <p class="muted small">すでに登録されている記録は、二重に登録しません。借りたことのある本は、借りたい本に入れません。</p>
-      </div>
-      <button class="btn" id="run" ${entries.length ? '' : 'disabled'}>取り込む</button>
-      <p class="muted small" id="progress"></p>`;
+    const build = () => {
+      const entries = [];
+      for (const r of rows) {
+        if (!r.title) continue;
+        const kids = namesOf(r).flatMap(n => n === ALL ? ctx.children
+          : byName.get(norm(n)) ? [byName.get(norm(n))]
+          : nameMap.get(n) ? [ctx.children.find(c => c.id === nameMap.get(n))] : []).filter(Boolean);
+        if (kids.length) entries.push({ row: r, kids: [...new Map(kids.map(k => [k.id, k])).values()] });
+      }
+      return entries;
+    };
+
+    const draw = () => {
+      const entries = build();
+      plan = entries;
+      const titles = new Set(entries.map(x => toIsbn13(x.row.isbn) || x.row.title));
+      const noIsbn = entries.filter(x => !toIsbn13(x.row.isbn)).length;
+      const wishes = entries.filter(x => x.row.kind === 'wish').length;
+      const count = name => rows.filter(r => namesOf(r).includes(name)).length;
+      preview.innerHTML = `
+        ${unknown.length ? `<div class="card stack is-warn">
+          <h4>CSVの名前がアプリの名前と違います。どのお子さんの記録か選んでください</h4>
+          ${unknown.map(n => `<label class="field inline">「${esc(n)}」（${count(n)}件）
+            <select class="input" data-map="${esc(n)}">
+              <option value="">取り込まない</option>
+              ${ctx.children.map(c => `<option value="${esc(c.id)}" ${nameMap.get(n) === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+            </select></label>`).join('')}
+        </div>` : ''}
+        <div class="card">
+          <h4>読み込んだ内容</h4>
+          <p><b>${entries.length - wishes}</b>件の貸出記録${wishes ? `、<b>${wishes}</b>件の借りたい本` : ''}（本 <b>${titles.size}</b>冊）</p>
+          <p class="muted small">登録先: ${ctx.children.map(c => esc(c.name)).join('、')}${noIsbn ? `<br>ISBNのない本 ${noIsbn}件は、書名だけで登録します（あとで本の詳細から直せます）` : ''}</p>
+          <p class="muted small">すでに登録されている記録は、二重に登録しません。借りたことのある本は、借りたい本に入れません。</p>
+        </div>
+        <button class="btn" id="run" ${entries.length ? '' : 'disabled'}>取り込む</button>
+        <p class="muted small" id="progress"></p>`;
+    };
+    preview.onchange = ev => {
+      const n = ev.target.dataset.map;
+      if (n == null) return;
+      if (ev.target.value) nameMap.set(n, ev.target.value); else nameMap.delete(n);
+      draw();
+    };
+    draw();
   });
 
   preview.addEventListener('click', async e => {
