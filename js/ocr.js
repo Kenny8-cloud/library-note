@@ -71,41 +71,60 @@ const KANA = /[぀-ヿ一-鿿]/;
 // 認識結果から書名の行を取り出す。川崎市立図書館のレシートは「1 書名」「資料ID (返却期限)」の2行で1冊
 // 書名の行を整える: 先頭の番号（1 や l、| と読み違えたものも）を外し、日本語の間の空白を詰め、後ろの（出版社・叢書名）を外す
 function cleanTitle(raw) {
-  let t = raw.replace(/^[\s_|\-—–'"“”‘’.,、。:;!]*([0-9lI|]{1,2}[\s.、:]+)?/, '');
+  let t = raw.replace(/^[\s_|\-—–'"“”‘’.,、。:;!]+/, '');
   // Tesseract は文字の間に空白を入れるので、日本語の間の空白は詰める
   t = t.replace(/(?<=[぀-ヿ一-鿿])\s+(?=[぀-ヿ一-鿿])/g, '');
   t = t.replace(/\s*[（(].*$/, '').replace(/[|_]+/g, '').trim();
   return t;
 }
 
-// 資料番号の行（例: 430019403905 (21/08/27)）。数字は日本語より正しく読めるので、書名を見つける手がかりにする
+// 資料番号の行（例: 430019403905 (21/08/27)）。数字は日本語より正しく読めるので、1冊の終わりの目印にする
 const ID_LINE = /\d{8,}/;
+const isIdLine = s => ID_LINE.test(s.replace(/\s/g, ''));
+// 「No 書名」の行。番号は 1〜2桁で、l・I・| と読み違えることがある
+const NO_LINE = /^[_|\-—–'"“”‘’.,、。]*\s*([0-9lI|]{1,2})\s+(.*[぀-ヿ一-鿿].*)$/;
+// レシートの見出しや、一覧の後ろのお知らせ・広告の行（書名ではない）
+const NOT_TITLE = /貸出資料|資料ID|資料ＩＤ|返却期限|資料数|合計|休館|お知らせ|施設点検|蔵書点検|キャンペーン|特典|[●◆■]/;
 
+// レシートの書式: 1冊ごとに「No 書名（長いと複数行）」の次に「資料番号（返却期限）」の行が続く。
+// No の行から資料番号の行の手前までを1冊の書名としてつなげる
 export function parseReceipt(text) {
   const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const titles = [];
-  const used = new Set();
-  // 1) 資料番号の行の、すぐ上の行を書名とみなす（先頭の番号が読めていなくても拾える）
-  lines.forEach((line, i) => {
-    if (!ID_LINE.test(line.replace(/\s/g, ''))) return;
-    for (let j = i - 1; j >= 0 && j >= i - 2; j--) {
-      if (ID_LINE.test(lines[j].replace(/\s/g, ''))) break;
-      if (!KANA.test(lines[j])) continue;
-      const t = cleanTitle(lines[j]);
-      if (t.length >= 2 && !used.has(j)) { titles.push({ line: j, title: t }); used.add(j); }
-      break;
+  const books = [];
+  const pending = [];   // No の行が見つかる前の、日本語を含む行
+  let cur = null;
+  const finish = () => {
+    if (cur) {
+      const t = cleanTitle(cur.parts.join(''));
+      if (t.length >= 2) books.push({ no: cur.no, title: t });
     }
-  });
-  // 2) 「番号 書名」の形の行も拾う（資料番号の行が読めなかった本のため）
-  lines.forEach((line, i) => {
-    if (used.has(i)) return;
-    const m = line.replace(/^[_|\-—–'"“”‘’.,、。]+\s*/, '').match(/^(\d{1,2})\s+(.+)$/);
-    if (!m || !KANA.test(m[2]) || ID_LINE.test(line.replace(/\s/g, ''))) return;
-    const t = cleanTitle(line);
-    if (t.length >= 2) { titles.push({ line: i, title: t }); used.add(i); }
-  });
-  // レシートの順に並べる
-  const list = titles.sort((a, b) => a.line - b.line).map((x, k) => ({ no: k + 1, title: x.title }));
+    cur = null;
+  };
+  for (const line of lines) {
+    if (isIdLine(line)) {
+      // 資料番号の行で1冊が終わる。No の行が読めなかったときは、前の資料番号からここまでの行を書名とみなす
+      if (!cur && pending.length) cur = { no: null, parts: pending.splice(0) };
+      finish();
+      pending.length = 0;
+      continue;
+    }
+    if (NOT_TITLE.test(line)) { finish(); pending.length = 0; continue; }
+    let m = line.match(NO_LINE);
+    // 書名の途中で数字から始まる行（「2 (ポプラ社…」など）は、次の No（今の No＋1）でなければ書名の続きとみなす
+    if (m && cur && cur.no != null && /^\d+$/.test(m[1]) && Number(m[1]) !== cur.no + 1) m = null;
+    if (m) {
+      finish();
+      cur = { no: /^\d+$/.test(m[1]) ? Number(m[1]) : null, parts: [m[2]] };
+    } else if (cur) {
+      if (/[぀-ヿ一-鿿]/.test(line)) cur.parts.push(line);   // 書名の続きの行
+    } else if (/[぀-ヿ一-鿿]/.test(line)) {
+      pending.push(line);
+    }
+  }
+  // 最後の本は資料番号の行が読めていないことがあるので、No の行があれば書名として残す
+  finish();
+  // No を読み違えた本は、前後の No から補う。並びはレシートの順のまま
+  const list = books.map((b, i) => ({ no: b.no ?? i + 1, title: b.title }));
   // 返却期限（例: 21/08/27）が読めたら、その14日前を借りた日の目安にする
   const due = text.replace(/\s/g, '').match(/\((\d{2})[\/ノ](\d{2})[\/ノ](\d{2})\)/);
   return { titles: list, due: due ? `20${due[1]}-${due[2]}-${due[3]}` : null };
