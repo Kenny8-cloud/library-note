@@ -23,7 +23,27 @@ export async function deleteChild(id) {
   for (const p of await db.all('seriesProgress')) {
     if (p.childId === id) await db.remove('seriesProgress', [p.childId, p.seriesId]);
   }
+  await db.setSetting('favorites', (await allFavorites()).filter(f => f.childId !== id));
   await db.remove('children', id);
+}
+
+// ---- お気に入り ----
+// 子供ごとのお気に入りの本。設定に [{ childId, bookId, at }] の形で置く（バックアップにも含まれる）
+export function allFavorites() {
+  return db.getSetting('favorites', []);
+}
+
+export async function favoritesOf(childId) {
+  return new Set((await allFavorites()).filter(f => f.childId === childId).map(f => f.bookId));
+}
+
+// お気に入りにする／外す。お気に入りになったら true を返す
+export async function toggleFavorite(childId, bookId) {
+  const list = await allFavorites();
+  const i = list.findIndex(f => f.childId === childId && f.bookId === bookId);
+  if (i >= 0) list.splice(i, 1); else list.push({ childId, bookId, at: today() });
+  await db.setSetting('favorites', list);
+  return i < 0;
 }
 
 // ---- 本・シリーズ ----
@@ -100,6 +120,11 @@ export async function mergeBook(fromId, intoId) {
     if (w.bookId !== fromId) continue;
     const dup = (await db.byIndex('wishlist', 'childId', w.childId)).some(x => x.bookId === intoId);
     if (dup) await db.remove('wishlist', w.id); else await db.put('wishlist', { ...w, bookId: intoId });
+  }
+  const favs = await allFavorites();
+  if (favs.some(f => f.bookId === fromId)) {
+    const moved = favs.map(f => (f.bookId === fromId ? { ...f, bookId: intoId } : f));
+    await db.setSetting('favorites', moved.filter((f, i) => moved.findIndex(x => x.childId === f.childId && x.bookId === f.bookId) === i));
   }
   const from = await db.get('books', fromId), into = await db.get('books', intoId);
   if (from?.seriesId && into && !into.seriesId) await db.put('books', { ...into, seriesId: from.seriesId, volume: from.volume });

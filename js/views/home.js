@@ -4,6 +4,7 @@ import * as lib from '../library.js';
 import { esc, cover, formatDate, toast } from '../ui.js';
 import { tabs } from '../app.js';
 import { releases, checkNewReleases, dismissRelease, wishRelease } from '../releases.js';
+import { defaultYear } from './review.js';
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -45,6 +46,9 @@ export default async function home(root, ctx) {
         </div>
       </div>
 
+      ${[11, 0].includes(now.getMonth()) ? `<a class="review-banner" href="#/review/${defaultYear()}">
+        <span>🎉</span><div><b>${defaultYear()}年の読書をふりかえろう</b><small>子供ごとの冊数・よく読んだシリーズ・お気に入り</small></div><i>›</i></a>` : ''}
+
       ${news.length ? `<section class="news-card">
         <h3>📣 新刊のお知らせ<small>${news.length}冊</small></h3>
         ${news.slice(0, 5).map(r => `<div class="row">
@@ -74,7 +78,8 @@ export default async function home(root, ctx) {
       <div class="drawers">
         <a class="drawer" href="#/receipt"><span class="plate">🧾</span><b>借りた本を登録</b><small>レシートを撮影</small></a>
         <a class="drawer" href="#/scan"><span class="plate">▥</span><b>借りた本を登録</b><small>本のバーコードを読む</small></a>
-        <a class="drawer wide" href="#/scan/check"><span class="plate">🔍</span><b>貸出履歴の確認</b><small>借りたことがあるか、図書館で調べる</small></a>
+        <a class="drawer" href="#/scan/check"><span class="plate">🔍</span><b>貸出履歴の確認</b><small>借りたことがあるか調べる</small></a>
+        <a class="drawer" href="#/review"><span class="plate">📖</span><b>読書のきろく</b><small>1年をふりかえる</small></a>
       </div>
     </main>
     ${tabs('home')}`;

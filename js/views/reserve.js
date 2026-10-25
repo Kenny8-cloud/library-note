@@ -1,13 +1,17 @@
 // S-10 予約候補（家族全体）。子供ごとに「シリーズの続き → 借りたい本」を並べ、チェックした本を予約する。
 import * as lib from '../library.js';
-import { esc, cover, formatDate } from '../ui.js';
+import { esc, cover, formatDate, toast } from '../ui.js';
 import { topKids, tabs } from '../app.js';
+import { suggestionsOf, needsRefresh, refreshSuggestions, dismissSuggestion, wishSuggestion } from '../suggestions.js';
 
 export const SELECTION_KEY = 'reserve-selection';
 
 export default async function reserve(root, ctx) {
   const plan = await lib.reservationPlan();
   const { targetCount, maxCount, lastReservedAt } = await lib.reserveSettings();
+  const suggest = new Map();
+  for (const p of plan) suggest.set(p.child.id, await suggestionsOf(p.child.id));
+  const searching = await needsRefresh();
   const items = new Map();
   // シリーズの続きは最初から選んでおく。借りたい本は自分で選ぶ
   const checked = new Set();
@@ -28,8 +32,27 @@ export default async function reserve(root, ctx) {
         ${firstChildOf.get(it.book.id).id !== it.childId ? `<span class="badge">${esc(firstChildOf.get(it.book.id).name)}と同じ本</span>` : ''}
         <span class="muted small">${it.series
           ? esc(`${it.series.title}${it.book.volume ? ` ${it.book.volume}巻` : ''}`)
-          : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ' }[it.wish.source] || '手動'}</span>`}</span></div>
+          : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' }[it.wish.source] || '手動'}</span>`}</span></div>
     </label>`;
+
+  // お気に入りに似た本。「候補に入れる」と借りたい本に入り、上のチェックの一覧に並ぶ
+  const suggestHtml = p => {
+    const list = suggest.get(p.child.id) || [];
+    if (!list.length && !searching) return '';
+    return `<details class="suggest" ${list.length ? 'open' : ''}>
+      <summary><h4 class="sub-h">♥ お気に入りに似た本${list.length ? ` ${list.length}冊` : ''}</h4></summary>
+      ${list.map(s => `<div class="row">
+        ${cover(s)}
+        <div class="t"><b>${esc(s.title)}</b>
+          <span class="muted small">${esc(s.authorName)} ・ 「${esc(s.because)}」が好きなので</span></div>
+        <div class="suggest-btns">
+          <button class="btn sm" data-suggest="${esc(p.child.id)}|${esc(s.isbn)}">候補に入れる</button>
+          <button class="link-btn small" data-nosuggest="${esc(p.child.id)}|${esc(s.isbn)}">いらない</button>
+        </div>
+      </div>`).join('')}
+      ${searching ? '<p class="muted small">お気に入りに似た本を探しています…（1分ほどかかります）</p>' : ''}
+    </details>`;
+  };
 
   root.innerHTML = `
     ${topKids({ title: '予約候補（家族全体）' })}
@@ -48,6 +71,7 @@ export default async function reserve(root, ctx) {
           </details>` : ''}
           ${p.pending.length ? `<h4 class="sub-h">借りたい本</h4>${p.pending.map(row).join('')}` : ''}
           ${!p.series.length && !p.pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
+          ${suggestHtml(p)}
           ${p.reserved.length ? `<details class="reserved"><summary class="small">予約済み（まだ借りていない） ${p.reserved.length}冊</summary>
             ${p.reserved.map(w => `<div class="row">${cover(w.book)}<div class="t"><b>${esc(w.book.title)}</b>
               <span class="muted small">${esc(formatDate(w.reservedAt))} に予約</span></div>
@@ -85,6 +109,20 @@ export default async function reserve(root, ctx) {
   });
 
   root.addEventListener('click', async e => {
+    const sg = e.target.closest('[data-suggest]') || e.target.closest('[data-nosuggest]');
+    if (sg) {
+      e.preventDefault();
+      sg.disabled = true;
+      const [childId, isbn] = (sg.dataset.suggest || sg.dataset.nosuggest).split('|');
+      if (sg.dataset.suggest) {
+        await wishSuggestion(childId, suggest.get(childId).find(s => s.isbn === isbn));
+        toast('借りたい本に入れました');
+      } else {
+        await dismissSuggestion(childId, isbn);
+      }
+      ctx.refresh();
+      return;
+    }
     const un = e.target.closest('[data-unreserve]');
     if (un) {
       e.preventDefault();
@@ -103,4 +141,11 @@ export default async function reserve(root, ctx) {
   });
 
   update();
+
+  // お気に入りが変わったときや1週間たったときは、裏で探し直してから描き直す
+  if (searching) {
+    refreshSuggestions().then(() => {
+      if (location.hash.startsWith('#/reserve') && !location.hash.startsWith('#/reserve-')) ctx.refresh();
+    }).catch(() => { /* 通信できないときは次に開いたとき */ });
+  }
 }

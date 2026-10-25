@@ -18,10 +18,11 @@ import seriesNew from './views/series-new.js';
 import wishlist from './views/wishlist.js';
 import reserveConfirm from './views/reserve-confirm.js';
 import receipt from './views/receipt.js';
+import review from './views/review.js';
 
 const routes = {
   setup, home, shelf, scan, register, search, book, reserve, settings, import: importView,
-  series, 'series-new': seriesNew, wishlist, 'reserve-confirm': reserveConfirm, receipt,
+  series, 'series-new': seriesNew, wishlist, 'reserve-confirm': reserveConfirm, receipt, review,
 };
 const KID_KEY = 'current-child';
 

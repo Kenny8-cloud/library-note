@@ -16,7 +16,7 @@ const norm = s => String(s || '').normalize('NFKC').toLowerCase().replace(/[\s�
 // 一度に描く冊数。1,700冊以上を一度に並べるとスマホで描画に時間がかかるので、少しずつ増やす
 const PAGE = 120;
 
-function historyHtml(history, q, seriesNames, limit = Infinity) {
+function historyHtml(history, q, seriesNames, limit = Infinity, favs = new Map()) {
   const needle = norm(q);
   const list = needle
     ? history.filter(l => norm(`${l.book.title}${l.book.author}${seriesNames.get(l.book.seriesId) || ''}`).includes(needle))
@@ -37,14 +37,14 @@ function historyHtml(history, q, seriesNames, limit = Infinity) {
   return count + [...groups].map(([label, loans]) => `
     <h3 class="month">${esc(label)}<small>${loans.length}冊</small></h3>
     <div class="shelf">${loans.map(l => `
-      <a href="#/book/${esc(l.book.id)}">${cover(l.book)}<span>${esc(l.book.title)}</span>
+      <a href="#/book/${esc(l.book.id)}">${cover(l.book)}${favs.has(l.book.id) ? '<em class="fav-mark" aria-label="お気に入り">♥</em>' : ''}<span>${esc(l.book.title)}</span>
         <i class="who">${(l.kids || []).map(k => `<b style="background:${esc(k.color)}" title="${esc(k.name)}"></b>`).join('')}</i></a>`).join('')}
     </div>`).join('')
     + (list.length > limit ? `<button class="btn ghost" id="more">さらに表示（残り ${list.length - limit}冊）</button>` : '');
 }
 
 // 本の詳細から戻ったときに、検索語・絞り込み・表示した冊数を元に戻すため、画面をまたいで覚えておく
-const state = { q: '', who: '', limit: PAGE };
+const state = { q: '', who: '', fav: false, limit: PAGE };
 
 const STATUS_LABEL = { reading: '読み進め中', done: '完了', paused: '中断' };
 
@@ -78,6 +78,12 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   const isSeries = tab === 'series';
   const all = isSeries ? [] : await lib.familyHistory();
   const seriesNames = isSeries ? new Map() : new Map((await lib.seriesList()).map(s => [s.id, s.title]));
+  // 本ごとに、お気に入りにしている子の一覧
+  const favs = new Map();
+  for (const f of isSeries ? [] : await lib.allFavorites()) {
+    if (!favs.has(f.bookId)) favs.set(f.bookId, []);
+    favs.get(f.bookId).push(f.childId);
+  }
 
   root.innerHTML = `
     ${isSeries ? topKids() : topKids({ title: '本棚（家族）' })}
@@ -92,6 +98,7 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
           <button class="chip ${state.who ? '' : 'on'}" data-who="">全員</button>
           ${ctx.children.map(c => `<button class="chip ${state.who === c.id ? 'on' : ''}" data-who="${esc(c.id)}"><span class="dot" style="background:${esc(c.color)}"></span> ${esc(c.name)}</button>`).join('')}
           <button class="chip ${state.who === 'unknown' ? 'on' : ''}" data-who="unknown">？ 本が未特定</button>
+          <button class="chip fav-chip ${state.fav ? 'on' : ''}" id="fav-only">♥ お気に入り</button>
         </div>
         <div id="list"></div>`}
     </main>
@@ -101,17 +108,34 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   const q = root.querySelector('#q');
   const draw = () => {
     // 「本が未特定」は、ISBN がなく書名だけで登録された本（本の詳細で図書館のデータから付け直せる）
-    const list = state.who === 'unknown' ? all.filter(l => !l.book.isbn)
+    let list = state.who === 'unknown' ? all.filter(l => !l.book.isbn)
       : state.who ? all.filter(l => l.kids.some(k => k.id === state.who)) : all;
-    root.querySelector('#list').innerHTML = historyHtml(list, state.q, seriesNames, state.limit);
+    // 「お気に入り」は、子供を選んでいればその子の、全員ならだれかのお気に入り。同じ本は1冊だけ出す
+    if (state.fav) {
+      const seen = new Set();
+      list = list.filter(l => {
+        const who = favs.get(l.book.id) || [];
+        const hit = state.who && state.who !== 'unknown' ? who.includes(state.who) : who.length > 0;
+        return hit && !seen.has(l.book.id) && seen.add(l.book.id);
+      });
+    }
+    root.querySelector('#list').innerHTML = historyHtml(list, state.q, seriesNames, state.limit, favs);
   };
   q.addEventListener('input', () => { state.q = q.value; state.limit = PAGE; draw(); });
   root.querySelector('#who').addEventListener('click', e => {
+    const favBtn = e.target.closest('#fav-only');
+    if (favBtn) {
+      state.fav = !state.fav;
+      state.limit = PAGE;
+      favBtn.classList.toggle('on', state.fav);
+      draw();
+      return;
+    }
     const b = e.target.closest('[data-who]');
     if (!b) return;
     state.who = b.dataset.who;
     state.limit = PAGE;
-    root.querySelectorAll('#who .chip').forEach(c => c.classList.toggle('on', c === b));
+    root.querySelectorAll('#who [data-who]').forEach(c => c.classList.toggle('on', c === b));
     draw();
   });
   root.querySelector('#list').addEventListener('click', e => {

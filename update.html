@@ -30,7 +30,7 @@
         './js/library.js', './js/scanner.js', './js/session.js', './js/ui.js', './js/csv.js', './js/views/setup.js',
         './js/views/child-form.js', './js/views/home.js', './js/views/shelf.js', './js/views/scan.js', './js/views/register.js',
         './js/views/search.js', './js/views/book.js', './js/views/reserve.js', './js/views/settings.js', './js/views/import.js',
-        './js/views/series.js', './js/views/series-new.js', './js/views/wishlist.js', './js/views/reserve-confirm.js', './js/views/receipt.js', './js/ocr.js', './js/releases.js'];
+        './js/views/series.js', './js/views/series-new.js', './js/views/wishlist.js', './js/views/reserve-confirm.js', './js/views/receipt.js', './js/ocr.js', './js/releases.js', './js/suggestions.js', './js/views/review.js'];
       await Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null)));
       msg.textContent = '最新の版に切り替えました。アプリを開きます…';
       setTimeout(() => location.replace('./?updated=' + Date.now() + '#/settings'), 800);

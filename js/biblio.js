@@ -163,6 +163,12 @@ export async function searchSeries(title) {
   return items.filter(i => i.isbn).map(i => ({ ...i, coverUrl: googleCoverUrl(i.isbn) }));
 }
 
+// 作者名で検索する（お気に入りに似た本の提案用）
+export async function searchAuthor(name) {
+  const items = await ndlSearch({ creator: name, cnt: '100' });
+  return items.filter(i => i.isbn).map(i => ({ ...i, coverUrl: googleCoverUrl(i.isbn) }));
+}
+
 // 書名で検索する（S-05）。ISBN ごとに重複を除く。
 export async function searchTitle(q) {
   const items = await ndlSearch({ title: q });

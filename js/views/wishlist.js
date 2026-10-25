@@ -3,7 +3,7 @@ import * as lib from '../library.js';
 import { esc, cover, kidChips, toast } from '../ui.js';
 import { topBack } from '../app.js';
 
-const SOURCE = { manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ' };
+const SOURCE = { manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' };
 
 export default async function wishlist(root, ctx) {
   const childId = ctx.childId;

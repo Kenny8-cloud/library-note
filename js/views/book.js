@@ -22,6 +22,7 @@ export default async function book(root, ctx, [bookId]) {
     return `${esc(c.name)}: ${theirs.length ? theirs.map(d => esc(formatDate(d))).join('、') : '借りていません'}`;
   });
   const wished = await lib.isWished(childId, b.id);
+  const favs = (await lib.allFavorites()).filter(f => f.bookId === b.id).map(f => f.childId);
 
   root.innerHTML = `
     ${topBack('本の詳細', { right: `<button class="link-btn" id="edit-toggle">編集</button>` })}
@@ -30,6 +31,11 @@ export default async function book(root, ctx, [bookId]) {
       <div class="center">
         <h2 class="book-title">${esc(b.title)}</h2>
         <p class="muted small">${esc([b.author, b.publisher].filter(Boolean).join(' ／ '))}${b.isbn ? `<br>ISBN ${esc(formatIsbn(b.isbn))}` : ''}</p>
+      </div>
+
+      <div class="fav-bar">
+        ${ctx.children.map(c => `<button class="fav-btn ${favs.includes(c.id) ? 'on' : ''}" data-fav="${esc(c.id)}" style="--kid:${esc(c.color)}"
+          aria-pressed="${favs.includes(c.id)}">${favs.includes(c.id) ? '♥' : '♡'} ${esc(c.name)}のお気に入り</button>`).join('')}
       </div>
 
       <form class="card stack" id="edit" hidden>
@@ -145,6 +151,14 @@ export default async function book(root, ctx, [bookId]) {
   });
 
   root.addEventListener('click', async e => {
+    const fav = e.target.closest('[data-fav]');
+    if (fav) {
+      const on = await lib.toggleFavorite(fav.dataset.fav, b.id);
+      const name = ctx.children.find(c => c.id === fav.dataset.fav)?.name || '';
+      toast(on ? `${name}のお気に入りにしました。似た本を予約候補で提案します` : `${name}のお気に入りから外しました`);
+      ctx.refresh();
+      return;
+    }
     const del = e.target.closest('[data-del]');
     if (del) {
       if (!confirm('この貸出記録を削除しますか？')) return;
