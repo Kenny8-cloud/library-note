@@ -1,7 +1,7 @@
 // レシートから登録。図書館のレシートを撮影 → 文字認識で書名を取り出す → 国立国会図書館サーチで本を特定 → 確認して登録。
 // 家族でまとめて借りるので、本ごとに誰の分かを選ぶ（初期値は全員）。
 import * as lib from '../library.js';
-import { preprocess, recognize, parseReceipt } from '../ocr.js';
+import { preprocess, recognize, parseReceipt, searchParts } from '../ocr.js';
 import { searchTitle } from '../biblio.js';
 import { esc, cover, today, toast } from '../ui.js';
 import { topBack } from '../app.js';
@@ -150,20 +150,31 @@ export default async function receipt(root, ctx) {
     r.candidates = null;
     draw();
     try {
-      const q = r.title.replace(/[^぀-ヿ一-鿿A-Za-z0-9０-９ー]/g, '').trim();
-      let list = await searchTitle(q);
+      const keep = s => s.replace(/[^぀-ヿ一-鿿A-Za-z0-9０-９ー]/g, '').trim();
+      // 書名を括弧の前・中・後ろに分けて探す。図書館のデータでは「かいぞくポケット」（シリーズ名）や
+      // 「コブタがテレビをみるなんて!」（副題）が書名になっていることがある
+      const parts = searchParts(r.title).map(keep).filter(p => p.length >= 3);
+      if (!parts.length) parts.push(keep(r.title));
+      const nums = (r.title.normalize('NFKC').match(/\d+/g) || []).filter(n => n.length <= 2);
+      // 図書館サーチは初めての言葉だと10秒ほどかかるので、1冊分の言葉はまとめて同時に探す
+      let list = (await Promise.all(parts.map(p => searchTitle(p).catch(() => [])))).flat();
       // 認識の1文字違いで見つからないときは、前半・後半に分けて探し直す（どちらかは正しく読めていることが多い）
+      const q = parts[0];
       if (!list.some(c => c.isbn) && q.length >= 6) {
         const n = Math.max(3, Math.ceil(q.length * 0.5));
-        const parts = [...new Set([q.slice(0, n), q.slice(-n)])];
-        for (const p of parts) list = list.concat(await searchTitle(p).catch(() => []));
+        list = (await Promise.all([...new Set([q.slice(0, n), q.slice(-n)])].map(p => searchTitle(p).catch(() => [])))).flat();
       }
       const seen = new Set();
       list = list.filter(c => c.isbn && !seen.has(c.isbn) && seen.add(c.isbn))
-        .map(c => ({ ...c, score: similarity(r.title, c.title) + (c.isChildren ? 0.05 : 0) }))
+        .map(c => {
+          const base = Math.max(...parts.map(p => similarity(p, c.title)));
+          // 巻数が一致すれば少し上げる（「かいぞくポケット 6」など）
+          const vol = nums.some(n => new RegExp(`(^|\\D)${n}(\\D|$)`).test(c.title.normalize('NFKC'))) ? 0.1 : 0;
+          return { ...c, score: base + vol + (c.isChildren ? 0.05 : 0) };
+        })
         .sort((a, b) => b.score - a.score).slice(0, 5);
       r.candidates = list;
-      r.pick = list.length && list[0].score >= 0.4 ? 0 : -1;
+      r.pick = list.length && list[0].score >= 0.45 ? 0 : -1;
     } catch {
       r.candidates = [];
       r.pick = -1;

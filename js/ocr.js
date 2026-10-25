@@ -69,13 +69,23 @@ export async function recognize(canvas, onProgress) {
 const KANA = /[぀-ヿ一-鿿]/;
 
 // 認識結果から書名の行を取り出す。川崎市立図書館のレシートは「1 書名」「資料ID (返却期限)」の2行で1冊
-// 書名の行を整える: 先頭の番号（1 や l、| と読み違えたものも）を外し、日本語の間の空白を詰め、後ろの（出版社・叢書名）を外す
+// 書名の行を整える: 先頭の記号を外し、日本語の間の空白を詰める。括弧の中（シリーズ名・巻数）はレシートどおりに残す
 function cleanTitle(raw) {
   let t = raw.replace(/^[\s_|\-—–'"“”‘’.,、。:;!]+/, '');
   // Tesseract は文字の間に空白を入れるので、日本語の間の空白は詰める
-  t = t.replace(/(?<=[぀-ヿ一-鿿])\s+(?=[぀-ヿ一-鿿])/g, '');
-  t = t.replace(/\s*[（(].*$/, '').replace(/[|_]+/g, '').trim();
+  t = t.replace(/(?<=[぀-ヿ一-鿿（）()])\s+(?=[぀-ヿ一-鿿（）()])/g, '');
+  t = t.replace(/[|_]+/g, '').replace(/\s{2,}/g, ' ').trim();
   return t;
+}
+
+// 図書館のデータを探すときの言葉: 括弧より前、括弧の中、括弧の後ろ（副題）に分ける
+export function searchParts(title) {
+  const s = title.normalize('NFKC');
+  const parts = s.split(/[()]/).map(p => p.replace(/^シリーズ/, '').trim()).filter(p => /[぀-ヿ一-鿿]/.test(p) && p.length >= 3);
+  // さらに空白・読点・長い線・巻数で区切った言葉も使う（「いちばんすてきなママはだれ」「ちいさなハンター」など）
+  const pieces = parts.flatMap(p => p.split(/[\s、,!?！？]+|ー{2,}|\d+/)).map(p => p.trim())
+    .filter(p => /[぀-ヿ一-鿿]/.test(p) && p.length >= 4);
+  return [...new Set([...parts, ...pieces])].slice(0, 6);
 }
 
 // 資料番号の行（例: 430019403905 (21/08/27)）。数字は日本語より正しく読めるので、1冊の終わりの目印にする
@@ -109,12 +119,21 @@ export function parseReceipt(text) {
       continue;
     }
     if (NOT_TITLE.test(line)) { finish(); pending.length = 0; continue; }
+    const lastNo = cur?.no ?? books.at(-1)?.no ?? 0;
     let m = line.match(NO_LINE);
     // 書名の途中で数字から始まる行（「2 (ポプラ社…」など）は、次の No（今の No＋1）でなければ書名の続きとみなす
     if (m && cur && cur.no != null && /^\d+$/.test(m[1]) && Number(m[1]) !== cur.no + 1) m = null;
+    // 紙の端の影などを文字と読み違えて、No の前に余計な文字が付くことがある（例:「回証明… 1 杉森くん」）。
+    // 行の途中に「次の No＋空白＋日本語」があれば、そこから書名とみなす
+    if (!m) {
+      const next = lastNo + 1;
+      const re = new RegExp(`(?:^|[\\s。、.,ー―\\-])(${next}${next === 1 ? '|l|I|\\|' : ''})\\s+(.*[\\u3040-\\u30ff\\u4e00-\\u9fff].*)$`);
+      const e = line.match(re);
+      if (e) m = [e[0], String(next), e[2]];
+    }
     if (m) {
       finish();
-      cur = { no: /^\d+$/.test(m[1]) ? Number(m[1]) : null, parts: [m[2]] };
+      cur = { no: /^\d+$/.test(m[1]) ? Number(m[1]) : lastNo + 1, parts: [m[2]] };
     } else if (cur) {
       if (/[぀-ヿ一-鿿]/.test(line)) cur.parts.push(line);   // 書名の続きの行
     } else if (/[぀-ヿ一-鿿]/.test(line)) {
