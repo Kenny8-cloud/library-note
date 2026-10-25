@@ -10,16 +10,19 @@ import { topKids, tabs } from '../app.js';
 const checkResults = [];
 
 export default async function scan(root, ctx, [mode]) {
-  const isCheck = mode === 'check';
+  // 借りたい本リストからの「スキャンで追加」は、借りたことある？モードと同じ画面で追加ボタンを使う
+  const isWish = mode === 'wish';
+  const isCheck = mode === 'check' || isWish;
   const childId = ctx.childId;
 
   root.innerHTML = `
     ${topKids()}
     <main class="body">
+      ${isWish ? `<div class="wish-head"><a class="back-link" href="#/wishlist">‹ 借りたい本リスト</a><b>スキャンして借りたい本に追加</b></div>` : `
       <div class="seg">
         <a href="#/scan" class="${isCheck ? '' : 'on'}">登録</a>
         <a href="#/scan/check" class="${isCheck ? 'on' : ''}">借りたことある？</a>
-      </div>
+      </div>`}
       <div class="camera">
         <video muted playsinline></video>
         <div class="guide"></div>
@@ -29,9 +32,9 @@ export default async function scan(root, ctx, [mode]) {
       ${isCheck ? `<div id="results"></div>` : `
         <h3 class="sub-h">スキャンした本（${esc(ctx.child.name)}）</h3>
         <div id="list"></div>`}
-      <a class="link small" href="#/search">バーコードがない本・ISBNを入力 ›</a>
+      <a class="link small" href="#/search${isWish ? '/wish' : ''}">${isWish ? '書名で探して追加' : 'バーコードがない本・ISBNを入力'} ›</a>
     </main>
-    ${isCheck ? '' : `<footer class="foot"><button class="btn" id="next">登録へ</button></footer>`}
+    ${isCheck ? '' : `<footer class="foot above-tabs"><button class="btn" id="next">登録へ</button></footer>`}
     ${tabs('scan')}`;
 
   const video = root.querySelector('video');

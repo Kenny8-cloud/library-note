@@ -77,8 +77,14 @@ function parseNdlItem(el) {
   if (volumeRaw && parseVolume(volumeRaw) != null) {
     series = { title, volume: parseVolume(volumeRaw) };
   } else if (seriesRaw) {
-    const [st, sv] = seriesRaw.split(/\s*;\s*/);
-    series = { title: toHalfWidth(st), volume: parseVolume(sv) };
+    // 「ポプラ社の新・小さな童話 ; 206. かいけつゾロリシリーズ」のように、レーベルの後ろに本当のシリーズ名が続くことがある
+    const parts = seriesRaw.split(/\.\s+/);
+    if (parts.length > 1) {
+      series = { title: toHalfWidth(parts[parts.length - 1]).split(/\s*;\s*/)[0], volume: null };
+    } else {
+      const [st, sv] = seriesRaw.split(/\s*;\s*/);
+      series = { title: toHalfWidth(st), volume: parseVolume(sv) };
+    }
   }
   return {
     isbn,

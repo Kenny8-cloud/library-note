@@ -13,8 +13,15 @@ import book from './views/book.js';
 import reserve from './views/reserve.js';
 import settings from './views/settings.js';
 import importView from './views/import.js';
+import series from './views/series.js';
+import seriesNew from './views/series-new.js';
+import wishlist from './views/wishlist.js';
+import reserveConfirm from './views/reserve-confirm.js';
 
-const routes = { setup, home, shelf, scan, register, search, book, reserve, settings, import: importView };
+const routes = {
+  setup, home, shelf, scan, register, search, book, reserve, settings, import: importView,
+  series, 'series-new': seriesNew, wishlist, 'reserve-confirm': reserveConfirm,
+};
 const KID_KEY = 'current-child';
 
 export const ctx = {

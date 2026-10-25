@@ -1,13 +1,14 @@
 // オフラインでも起動できるよう、アプリのファイルをキャッシュする。
 // 通信できるときは常にネットワークの最新版を使い、つながらないときだけキャッシュを使う。
 // ファイルを追加したら FILES に加え、VERSION を上げる。
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = `library-log-${VERSION}`;
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/db.js', './js/isbn.js', './js/biblio.js', './js/library.js', './js/scanner.js', './js/session.js', './js/ui.js', './js/csv.js',
   './js/views/setup.js', './js/views/child-form.js', './js/views/home.js', './js/views/shelf.js', './js/views/scan.js',
   './js/views/register.js', './js/views/search.js', './js/views/book.js', './js/views/reserve.js', './js/views/settings.js', './js/views/import.js',
+  './js/views/series.js', './js/views/series-new.js', './js/views/wishlist.js', './js/views/reserve-confirm.js',
   './icons/icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
   'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js',
 ];

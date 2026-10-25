@@ -134,17 +134,165 @@ export function deleteLoan(id) {
   return db.remove('loans', id);
 }
 
-// ---- 借りたい本（段階2で一覧画面を作る。今は追加だけ） ----
-export async function addWish(childId, bookId, source = 'manual') {
+// ---- シリーズの読み進め ----
+// シリーズの巻は「そのシリーズに属する本」を巻数順（巻数がなければ出版順）に並べたもの。
+// 次の巻 = その子がまだ借りていない最初の巻。手元にない巻は、シリーズ詳細で図書館データから追加する。
+export function sortVolumes(books) {
+  return [...books].sort((a, b) =>
+    (a.volume ?? Infinity) - (b.volume ?? Infinity) || (a.pubdate || '').localeCompare(b.pubdate || '') || a.title.localeCompare(b.title, 'ja'));
+}
+
+export async function seriesBooks(seriesId) {
+  return sortVolumes(await db.byIndex('books', 'seriesId', seriesId));
+}
+
+export async function getProgress(childId, seriesId) {
+  return db.get('seriesProgress', [childId, seriesId]);
+}
+
+export async function setProgress(childId, seriesId, status) {
+  return db.put('seriesProgress', { childId, seriesId, status, updatedAt: new Date().toISOString() });
+}
+
+export function saveSeries(series) {
+  return db.put('series', series);
+}
+
+export async function deleteSeries(seriesId) {
+  for (const b of await db.byIndex('books', 'seriesId', seriesId)) {
+    b.seriesId = null;
+    b.volume = null;
+    await db.put('books', b);
+  }
+  for (const p of await db.all('seriesProgress')) {
+    if (p.seriesId === seriesId) await db.remove('seriesProgress', [p.childId, p.seriesId]);
+  }
+  await db.remove('series', seriesId);
+}
+
+// 子供ごとのシリーズの状況。1冊でも借りたシリーズが対象で、状態は明示がなければ「読み進め中」
+export async function seriesStatusOf(childId) {
+  const loans = await db.byIndex('loans', 'childId', childId);
+  const borrowed = new Set(loans.map(l => l.bookId));
+  const books = await db.all('books');
+  const bySeries = new Map();
+  for (const b of books) {
+    if (!b.seriesId) continue;
+    if (!bySeries.has(b.seriesId)) bySeries.set(b.seriesId, []);
+    bySeries.get(b.seriesId).push(b);
+  }
+  const result = [];
+  for (const [seriesId, list] of bySeries) {
+    const vols = sortVolumes(list);
+    const read = vols.filter(b => borrowed.has(b.id));
+    const progress = await getProgress(childId, seriesId);
+    if (!read.length && !progress) continue;
+    const series = await db.get('series', seriesId);
+    if (!series) continue;
+    result.push({
+      series,
+      books: vols,
+      readCount: read.length,
+      status: progress?.status || 'reading',
+      next: vols.find(b => !borrowed.has(b.id)) || null,
+      borrowed,
+    });
+  }
+  return result.sort((a, b) => a.series.title.localeCompare(b.series.title, 'ja'));
+}
+
+// ---- 借りたい本 ----
+// status: none（まだ予約していない）/ reserved（予約済み）。source: manual / author / ai / series
+export async function addWish(childId, bookId, source = 'manual', status = 'none') {
   const list = await db.byIndex('wishlist', 'childId', childId);
-  if (list.some(w => w.bookId === bookId)) return false;
+  const found = list.find(w => w.bookId === bookId);
+  if (found) {
+    if (status === 'reserved' && found.status !== 'reserved') await db.put('wishlist', { ...found, status, reservedAt: today() });
+    return false;
+  }
   await db.put('wishlist', {
-    id: db.newId(), childId, bookId, source, status: 'none',
-    order: list.length, createdAt: new Date().toISOString(),
+    id: db.newId(), childId, bookId, source, status,
+    order: list.length ? Math.max(...list.map(w => w.order)) + 1 : 0,
+    createdAt: new Date().toISOString(),
+    ...(status === 'reserved' ? { reservedAt: today() } : {}),
   });
   return true;
 }
 
 export async function isWished(childId, bookId) {
   return (await db.byIndex('wishlist', 'childId', childId)).some(w => w.bookId === bookId);
+}
+
+export async function wishesOf(childId) {
+  const list = await db.byIndex('wishlist', 'childId', childId);
+  const out = [];
+  for (const w of list.sort((a, b) => a.order - b.order)) {
+    const book = await db.get('books', w.bookId);
+    if (book) out.push({ ...w, book });
+  }
+  return out;
+}
+
+export function removeWish(id) {
+  return db.remove('wishlist', id);
+}
+
+export async function updateWish(wish) {
+  const { book, ...row } = wish;
+  return db.put('wishlist', row);
+}
+
+// 並べ替え: dir = -1（上へ）/ 1（下へ）
+export async function moveWish(childId, id, dir) {
+  const list = (await db.byIndex('wishlist', 'childId', childId)).sort((a, b) => a.order - b.order);
+  const i = list.findIndex(w => w.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  for (let k = 0; k < list.length; k++) {
+    if (list[k].order !== k) await db.put('wishlist', { ...list[k], order: k });
+  }
+}
+
+// ---- 予約 ----
+// 子供ごとの予約候補: シリーズの次の巻 → 借りたい本（未予約）の順。予約済みは別に返す
+export async function reservationPlan() {
+  const kids = await children();
+  const plan = [];
+  for (const child of kids) {
+    const wishes = await wishesOf(child.id);
+    const wishedIds = new Set(wishes.map(w => w.bookId));
+    const reading = (await seriesStatusOf(child.id)).filter(s => s.status === 'reading');
+    const series = reading
+      .filter(s => s.next && !wishedIds.has(s.next.id))
+      .map(s => ({ kind: 'series', key: `s:${child.id}:${s.next.id}`, childId: child.id, book: s.next, series: s.series }));
+    const pending = wishes.filter(w => w.status !== 'reserved')
+      .map(w => ({ kind: 'wish', key: `w:${w.id}`, childId: child.id, book: w.book, wish: w }));
+    const reserved = wishes.filter(w => w.status === 'reserved');
+    // 次の巻がまだ登録されていないシリーズ（シリーズ詳細で追加してもらう）
+    const needVolume = reading.filter(s => !s.next);
+    plan.push({ child, series, pending, reserved, needVolume });
+  }
+  return plan;
+}
+
+// 選んだ候補を予約済みにする。シリーズの次の巻は借りたい本（予約済み）として記録する
+export async function confirmReservation(items) {
+  for (const it of items) {
+    if (it.kind === 'series') await addWish(it.childId, it.book.id, 'series', 'reserved');
+    else await updateWish({ ...it.wish, status: 'reserved', reservedAt: today() });
+  }
+  await db.setSetting('lastReservedAt', today());
+}
+
+export async function reserveSettings() {
+  return {
+    targetCount: await db.getSetting('targetCount', 15),
+    maxCount: await db.getSetting('maxCount', 40),
+    lastReservedAt: await db.getSetting('lastReservedAt', null),
+  };
+}
+
+export function saveSetting(key, value) {
+  return db.setSetting(key, value);
 }

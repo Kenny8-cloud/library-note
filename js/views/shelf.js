@@ -30,33 +30,35 @@ function historyHtml(history, q) {
     </div>`).join('');
 }
 
-async function seriesHtml(history) {
-  const bySeries = new Map();
-  for (const l of history) {
-    if (!l.book.seriesId) continue;
-    if (!bySeries.has(l.book.seriesId)) bySeries.set(l.book.seriesId, new Set());
-    if (l.book.volume) bySeries.get(l.book.seriesId).add(l.book.volume);
-  }
-  if (!bySeries.size) {
-    return `<p class="empty">シリーズに登録した本はまだありません。<br>登録の確認画面や本の詳細で、シリーズ名と巻数を設定できます。</p>`;
-  }
-  const rows = [];
-  for (const [id, vols] of bySeries) {
-    const s = await lib.getSeries(id);
-    const sorted = [...vols].sort((a, b) => a - b);
-    rows.push({ title: s?.title || '', sorted });
-  }
-  rows.sort((a, b) => a.title.localeCompare(b.title, 'ja'));
-  return rows.map(r => `
-    <div class="card">
-      <b>${esc(r.title)}</b>
-      <div class="muted small">借りた巻: ${r.sorted.length ? r.sorted.map(v => `${v}巻`).join('・') : '巻数なし'}</div>
-    </div>`).join('') + `<p class="muted small">次の巻の表示や予約候補への追加は、段階2で追加します。</p>`;
+const STATUS_LABEL = { reading: '読み進め中', done: '完了', paused: '中断' };
+
+async function seriesHtml(childId, filter) {
+  const list = await lib.seriesStatusOf(childId);
+  const counts = { reading: 0, done: 0, paused: 0 };
+  list.forEach(s => counts[s.status]++);
+  const chips = Object.keys(STATUS_LABEL).map(k =>
+    `<a class="chip ${filter === k ? 'on' : ''}" href="#/shelf/series/${k}">${STATUS_LABEL[k]} ${counts[k]}</a>`).join('');
+  const shown = list.filter(s => s.status === filter);
+  const rows = shown.map(s => {
+    const total = s.books.length;
+    const next = s.next
+      ? `次: ${esc(s.next.volume ? `${s.next.volume}巻` : s.next.title)}`
+      : (s.status === 'reading' ? '<span class="badge warn">次の巻が未登録</span>' : '');
+    return `<a class="card series-card" href="#/series/${esc(s.series.id)}">
+      <b>${esc(s.series.title)}</b>
+      <div class="muted small">${s.readCount} / ${total}冊 ・ ${next}</div>
+      <div class="prog"><i style="width:${total ? Math.round(s.readCount / total * 100) : 0}%"></i></div>
+    </a>`;
+  }).join('');
+  return `<div class="chips">${chips}</div>
+    ${rows || `<p class="empty">${STATUS_LABEL[filter]}のシリーズはありません。</p>`}
+    <a class="btn ghost" href="#/series-new">＋ シリーズを作る</a>
+    <p class="muted small">本棚の本をまとめてシリーズにできます。シリーズにすると、次に借りる巻が予約候補に出ます。</p>`;
 }
 
-export default async function shelf(root, ctx, [tab]) {
-  const history = await lib.historyOf(ctx.childId);
+export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   const isSeries = tab === 'series';
+  const history = isSeries ? [] : await lib.historyOf(ctx.childId);
 
   root.innerHTML = `
     ${topKids()}
@@ -65,7 +67,7 @@ export default async function shelf(root, ctx, [tab]) {
         <a href="#/shelf" class="${isSeries ? '' : 'on'}">履歴</a>
         <a href="#/shelf/series" class="${isSeries ? 'on' : ''}">シリーズ</a>
       </div>
-      ${isSeries ? await seriesHtml(history) : `
+      ${isSeries ? await seriesHtml(ctx.childId, filter) : `
         <input class="input" type="search" id="q" placeholder="🔍 書名・作者で検索" autocomplete="off">
         <p class="muted small">これまでに ${history.length}冊</p>
         <div id="list">${historyHtml(history, '')}</div>`}

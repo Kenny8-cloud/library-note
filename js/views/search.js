@@ -1,17 +1,20 @@
 // S-05 手入力・書名検索。選んだ本はスキャン中の一覧に加えて、スキャン画面に戻る。
+// #/search/wish のときは、選んだ本を借りたい本リストに加えて、リストに戻る。
 import * as session from '../session.js';
+import * as lib from '../library.js';
 import { lookupIsbn, searchTitle } from '../biblio.js';
 import { toIsbn13 } from '../isbn.js';
 import { newId } from '../db.js';
 import { esc, cover, toast } from '../ui.js';
 import { topBack } from '../app.js';
 
-export default async function search(root, ctx) {
+export default async function search(root, ctx, [mode]) {
   const childId = ctx.childId;
+  const isWish = mode === 'wish';
   let results = [];
 
   root.innerHTML = `
-    ${topBack('本をさがす', { back: 'scan' })}
+    ${topBack(isWish ? `借りたい本を探す（${ctx.child.name}）` : '本をさがす', { back: isWish ? 'wishlist' : 'scan' })}
     <main class="body">
       <form id="search-form" class="search-bar">
         <input class="input" type="search" name="q" placeholder="書名 または ISBN" autocomplete="off" required>
@@ -27,13 +30,24 @@ export default async function search(root, ctx) {
           <label class="field vol">巻<input name="volume" type="number" min="1" inputmode="numeric"></label>
         </div>
         <p class="muted small">表紙の撮影は段階3（Googleドライブ連携）で追加します。</p>
-        <button class="btn" type="submit">一覧に追加</button>
+        <button class="btn" type="submit">${isWish ? '借りたい本に追加' : '一覧に追加'}</button>
       </form>
     </main>`;
 
   const resultsEl = root.querySelector('#results');
 
-  const addAndBack = (item) => {
+  const addAndBack = async (item) => {
+    if (isWish) {
+      const book = await lib.ensureBook(item.info);
+      if (item.info.seriesCandidate?.title && !book.seriesId) {
+        await lib.setBookSeries(book, item.info.seriesCandidate.title, item.info.seriesCandidate.volume);
+      }
+      const borrowed = (await lib.loansOf(childId, book.id)).length;
+      toast(!(await lib.addWish(childId, book.id)) ? 'この本はすでにリストにあります'
+        : borrowed ? `「${book.title}」を追加しました（前に借りたことがあります）` : `「${book.title}」を追加しました`);
+      ctx.go('wishlist');
+      return;
+    }
     if (!session.add(childId, item)) toast('この本はすでに一覧にあります');
     else toast(`「${item.info.title}」を一覧に追加しました`);
     ctx.go('scan');

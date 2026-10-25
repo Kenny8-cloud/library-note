@@ -7,6 +7,7 @@ import { childForm, readChildForm } from './child-form.js';
 
 export default async function settings(root, ctx) {
   const children = ctx.children;
+  const reserve = await lib.reserveSettings();
 
   root.innerHTML = `
     ${topBack('設定', { back: 'home' })}
@@ -32,6 +33,15 @@ export default async function settings(root, ctx) {
         </details>
       </div>
 
+      <h3 class="sub-h">予約</h3>
+      <form class="card stack" id="reserve-settings">
+        <div class="two">
+          <label class="field">冊数の目安（家族全体）<input name="targetCount" type="number" min="1" max="200" inputmode="numeric" value="${esc(reserve.targetCount)}"></label>
+          <label class="field">上限<input name="maxCount" type="number" min="1" max="200" inputmode="numeric" value="${esc(reserve.maxCount)}"></label>
+        </div>
+        <button class="btn sm" type="submit">保存</button>
+      </form>
+
       <h3 class="sub-h">データ</h3>
       <div class="card list">
         <a class="list-btn" href="#/import">過去の履歴を取り込む（CSV）</a>
@@ -43,6 +53,16 @@ export default async function settings(root, ctx) {
     </main>`;
 
   root.addEventListener('submit', async e => {
+    if (e.target.id === 'reserve-settings') {
+      e.preventDefault();
+      const target = Number(e.target.targetCount.value) || 15;
+      const max = Math.max(target, Number(e.target.maxCount.value) || 40);
+      await lib.saveSetting('targetCount', target);
+      await lib.saveSetting('maxCount', max);
+      toast('保存しました');
+      ctx.refresh();
+      return;
+    }
     const form = e.target.closest('[data-child]');
     if (!form) return;
     e.preventDefault();

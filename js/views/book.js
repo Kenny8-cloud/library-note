@@ -44,7 +44,7 @@ export default async function book(root, ctx, [bookId]) {
         <button class="btn" type="submit">保存</button>
       </form>
 
-      <div class="card"><h4>シリーズ</h4>${series ? `${esc(series.title)}${b.volume ? `（${b.volume}巻）` : ''}` : '<span class="muted">なし（「編集」から設定できます）</span>'}</div>
+      <div class="card"><h4>シリーズ</h4>${series ? `<a class="link" href="#/series/${esc(series.id)}">${esc(series.title)}${b.volume ? `（${b.volume}巻）` : ''} ›</a>` : '<span class="muted">なし（「編集」から設定できます）</span>'}</div>
 
       <div class="card">
         <h4>${esc(ctx.child.name)}が借りた日</h4>
