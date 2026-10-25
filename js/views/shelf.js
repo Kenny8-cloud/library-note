@@ -13,7 +13,10 @@ function monthLabel(iso) {
 const norm = s => String(s || '').normalize('NFKC').toLowerCase().replace(/[\s・!?！？、。,.「」『』()（）〜~ー\-:：]/g, '');
 
 // 書名・作者名に加えて、シリーズ名でも探す（「なんでも魔女商会」の本は書名にシリーズ名が入っていないことがある）
-function historyHtml(history, q, seriesNames) {
+// 一度に描く冊数。1,700冊以上を一度に並べるとスマホで描画に時間がかかるので、少しずつ増やす
+const PAGE = 120;
+
+function historyHtml(history, q, seriesNames, limit = Infinity) {
   const needle = norm(q);
   const list = needle
     ? history.filter(l => norm(`${l.book.title}${l.book.author}${seriesNames.get(l.book.seriesId) || ''}`).includes(needle))
@@ -26,7 +29,7 @@ function historyHtml(history, q, seriesNames) {
   if (!list.length) return `${count}<p class="empty">「${esc(q)}」に当てはまる本はありません。</p>`;
 
   const groups = new Map();
-  for (const l of list) {
+  for (const l of list.slice(0, limit)) {
     const key = monthLabel(l.borrowedAt);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(l);
@@ -36,8 +39,12 @@ function historyHtml(history, q, seriesNames) {
     <div class="shelf">${loans.map(l => `
       <a href="#/book/${esc(l.book.id)}">${cover(l.book)}<span>${esc(l.book.title)}</span>
         <i class="who">${(l.kids || []).map(k => `<b style="background:${esc(k.color)}" title="${esc(k.name)}"></b>`).join('')}</i></a>`).join('')}
-    </div>`).join('');
+    </div>`).join('')
+    + (list.length > limit ? `<button class="btn ghost" id="more">さらに表示（残り ${list.length - limit}冊）</button>` : '');
 }
+
+// 本の詳細から戻ったときに、検索語・絞り込み・表示した冊数を元に戻すため、画面をまたいで覚えておく
+const state = { q: '', who: '', limit: PAGE };
 
 const STATUS_LABEL = { reading: '読み進め中', done: '完了', paused: '中断' };
 
@@ -71,7 +78,6 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   const isSeries = tab === 'series';
   const all = isSeries ? [] : await lib.familyHistory();
   const seriesNames = isSeries ? new Map() : new Map((await lib.seriesList()).map(s => [s.id, s.title]));
-  let who = '';
 
   root.innerHTML = `
     ${isSeries ? topKids() : topKids({ title: '本棚（家族）' })}
@@ -81,10 +87,10 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
         <a href="#/shelf/series" class="${isSeries ? 'on' : ''}">シリーズ</a>
       </div>
       ${isSeries ? await seriesHtml(ctx.childId, filter) : `
-        <input class="input" type="search" id="q" placeholder="🔍 書名・作者・シリーズ名で検索" autocomplete="off">
+        <input class="input" type="search" id="q" placeholder="🔍 書名・作者・シリーズ名で検索" autocomplete="off" value="${esc(state.q)}">
         <div class="chips" id="who">
-          <button class="chip on" data-who="">全員</button>
-          ${ctx.children.map(c => `<button class="chip" data-who="${esc(c.id)}"><span class="dot" style="background:${esc(c.color)}"></span> ${esc(c.name)}</button>`).join('')}
+          <button class="chip ${state.who ? '' : 'on'}" data-who="">全員</button>
+          ${ctx.children.map(c => `<button class="chip ${state.who === c.id ? 'on' : ''}" data-who="${esc(c.id)}"><span class="dot" style="background:${esc(c.color)}"></span> ${esc(c.name)}</button>`).join('')}
         </div>
         <div id="list"></div>`}
     </main>
@@ -93,15 +99,21 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   if (isSeries) return;
   const q = root.querySelector('#q');
   const draw = () => {
-    const list = who ? all.filter(l => l.kids.some(k => k.id === who)) : all;
-    root.querySelector('#list').innerHTML = historyHtml(list, q.value, seriesNames);
+    const list = state.who ? all.filter(l => l.kids.some(k => k.id === state.who)) : all;
+    root.querySelector('#list').innerHTML = historyHtml(list, state.q, seriesNames, state.limit);
   };
-  q.addEventListener('input', draw);
+  q.addEventListener('input', () => { state.q = q.value; state.limit = PAGE; draw(); });
   root.querySelector('#who').addEventListener('click', e => {
     const b = e.target.closest('[data-who]');
     if (!b) return;
-    who = b.dataset.who;
+    state.who = b.dataset.who;
+    state.limit = PAGE;
     root.querySelectorAll('#who .chip').forEach(c => c.classList.toggle('on', c === b));
+    draw();
+  });
+  root.querySelector('#list').addEventListener('click', e => {
+    if (e.target.id !== 'more') return;
+    state.limit += PAGE * 3;
     draw();
   });
   draw();

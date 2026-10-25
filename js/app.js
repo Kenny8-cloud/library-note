@@ -76,9 +76,21 @@ export function tabs(active) {
 // ---- 描画 ----
 let cleanup = null;
 let renderSeq = 0;
+// 戻る操作で前の画面に戻ったときに、スクロール位置を元に戻すため画面ごとに覚えておく
+const scrollPos = new Map();
+let goingBack = false;
+window.addEventListener('popstate', () => { goingBack = true; });
+let scrollTimer;
+window.addEventListener('scroll', () => {
+  clearTimeout(scrollTimer);
+  const key = location.hash;
+  scrollTimer = setTimeout(() => scrollPos.set(key, window.scrollY), 100);
+}, { passive: true });
 
 async function render() {
   const seq = ++renderSeq;
+  const back = goingBack;
+  goingBack = false;
   if (cleanup) { try { await cleanup(); } catch { /* 無視 */ } cleanup = null; }
   await scanner.stop();
   await loadChildren();
@@ -87,15 +99,15 @@ async function render() {
   let view = routes[name] ? name : 'home';
   if (!ctx.children.length && view !== 'settings') view = 'setup';
 
-  // 画面ごとに新しい要素に差し替え、前の画面のイベントが残らないようにする
-  const old = document.getElementById('app');
-  const root = old.cloneNode(false);
-  old.replaceWith(root);
+  // 画面ごとに新しい要素を作り、できあがってから差し替える（前の画面のイベントを残さず、
+  // 準備中に真っ白な画面を見せないため）
+  const root = document.getElementById('app').cloneNode(false);
   root.dataset.view = view;
   const result = await routes[view](root, ctx, params.map(decodeURIComponent));
   if (seq !== renderSeq) { if (typeof result === 'function') result(); return; }
+  document.getElementById('app').replaceWith(root);
   cleanup = typeof result === 'function' ? result : null;
-  window.scrollTo(0, 0);
+  window.scrollTo(0, back ? (scrollPos.get(location.hash) || 0) : 0);
 }
 
 document.addEventListener('click', e => {
@@ -108,7 +120,7 @@ document.addEventListener('click', e => {
   const back = e.target.closest('[data-back]');
   if (back) {
     const to = back.dataset.back;
-    if (to === 'history' && history.length > 1) history.back();
+    if (to === 'history' && history.length > 1) { goingBack = true; history.back(); }
     else ctx.go(to === 'history' ? 'home' : to);
   }
 });
