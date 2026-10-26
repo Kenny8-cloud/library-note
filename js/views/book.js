@@ -1,6 +1,6 @@
 // S-07 本の詳細。書誌情報の編集、貸出日の修正・削除、借りたい本への追加。
 import * as lib from '../library.js';
-import { format as formatIsbn } from '../isbn.js';
+import { format as formatIsbn, toIsbn13 } from '../isbn.js';
 import { esc, cover, formatDate, today, toast } from '../ui.js';
 import { topBack } from '../app.js';
 import { searchTitle } from '../biblio.js';
@@ -43,6 +43,8 @@ export default async function book(root, ctx, [bookId]) {
         <label class="field">書名<input name="title" required value="${esc(b.title)}"></label>
         <label class="field">作者<input name="author" value="${esc(b.author)}"></label>
         <label class="field">出版社<input name="publisher" value="${esc(b.publisher)}"></label>
+        <label class="field">ISBN（本の裏表紙や Amazon のページにある10桁・13桁の番号）
+          <input name="isbn" inputmode="numeric" autocomplete="off" value="${esc(b.isbn ? formatIsbn(b.isbn) : '')}" placeholder="例: 4893170260"></label>
         <datalist id="series-list">${allSeries.map(s => `<option value="${esc(s.title)}">`).join('')}</datalist>
         <div class="two">
           <label class="field">シリーズ名<input name="series" list="series-list" value="${esc(series?.title || '')}"></label>
@@ -65,9 +67,11 @@ export default async function book(root, ctx, [bookId]) {
         </div>
       </div>
 
-      <details class="card" id="lookup" ${b.isbn ? '' : 'open'}>
+      <details class="card" id="lookup" ${lib.isUnidentified(b) ? 'open' : ''}>
         <summary><h4 style="display:inline">${b.isbn ? '別の本に付け直す（図書館のデータで探す）' : '図書館のデータで本を探す'}</h4></summary>
-        ${b.isbn ? '' : '<p class="muted small">この本はまだ特定できていません。正しい本を選ぶと、表紙や作者が付きます。</p>'}
+        ${lib.isUnidentified(b) ? `<p class="muted small">この本はまだ特定できていません。正しい本を選ぶと、表紙や作者が付きます。
+          古い本などで見つからないときは、下のボタンで「本が未特定」から外せます。</p>
+          <button class="link-btn small" id="confirm-book">このままでよい（未特定から外す）</button>` : ''}
         <form class="search-bar" id="lookup-form" style="margin-top:8px">
           <input class="input" name="q" value="${esc(b.title)}" autocomplete="off">
           <button class="btn sm" type="submit">検索</button>
@@ -139,7 +143,7 @@ export default async function book(root, ctx, [bookId]) {
     const canvas = document.createElement('canvas');
     canvas.width = 250; canvas.height = 350;   // 本の詳細の大きい表紙でもきれいに見え、1冊20KBほどに収まる大きさ
     canvas.getContext('2d').drawImage(cropImg, box.x * r, box.y * r, box.w * r, box.h * r, 0, 0, canvas.width, canvas.height);
-    await lib.updateBook({ ...b, coverData: canvas.toDataURL('image/jpeg', 0.8) });
+    await lib.updateBook({ ...b, coverData: canvas.toDataURL('image/jpeg', 0.8), confirmed: true });
     URL.revokeObjectURL(cropImg.src);
     toast('表紙を設定しました');
     ctx.refresh();
@@ -162,6 +166,26 @@ export default async function book(root, ctx, [bookId]) {
     b.title = String(f.get('title')).trim() || b.title;
     b.author = String(f.get('author') || '').trim();
     b.publisher = String(f.get('publisher') || '').trim();
+    // ISBN を手で入れられるようにする（図書館のデータに ISBN がない古い本や、見つからない本のため）
+    const isbnRaw = String(f.get('isbn') || '').trim();
+    const isbn = isbnRaw ? toIsbn13(isbnRaw) : null;
+    if (isbnRaw && !isbn) {
+      toast('ISBN の番号が正しくありません。10桁か13桁の番号を入れてください');
+      return;
+    }
+    if (isbn && isbn !== b.isbn) {
+      const existing = await lib.bookByIsbn(isbn);
+      if (existing && existing.id !== b.id) {
+        // 同じ ISBN の本がすでに本棚にあれば、そちらにまとめる（貸出記録は消えない）
+        await lib.mergeBook(b.id, existing.id);
+        toast('本棚にある同じ本にまとめました');
+        ctx.go(`book/${existing.id}`);
+        return;
+      }
+    }
+    b.isbn = isbn;
+    // 自分で確かめて保存した本は、ISBN がなくても「本が未特定」に出さない
+    b.confirmed = true;
     if (f.get('hideCover')) b.coverUrl = null;
     await lib.setBookSeries(b, String(f.get('series') || ''), f.get('volume'));
     toast('保存しました');
@@ -188,11 +212,13 @@ export default async function book(root, ctx, [bookId]) {
     const qg = grams(norm(q));
     const near = c => { const g = grams(norm(c.title)); let hit = 0; g.forEach(x => qg.has(x) && hit++); return (2 * hit) / (g.size + qg.size || 1) + (c.isChildren ? 0.05 : 0); };
     const seen = new Set();
-    found = lists.flat().filter(c => c && c.isbn && !seen.has(c.isbn) && seen.add(c.isbn))
+    // ISBN のない古い本も候補に出す（選ぶと書名・作者・出版社が付く）
+    const keyOf = c => c.isbn || `${c.title}|${c.publisher}|${c.pubdate}`;
+    found = lists.flat().filter(c => c && !seen.has(keyOf(c)) && seen.add(keyOf(c)))
       .sort((x, y) => near(y) - near(x)).slice(0, 20);
     resultsEl.innerHTML = found.length ? found.map((c, i) => `<div class="row">
         ${cover(c)}
-        <div class="t"><b>${esc(c.title)}</b><span class="muted small">${esc([c.author, c.publisher, (c.pubdate || '').slice(0, 4)].filter(Boolean).join(' ／ '))}</span></div>
+        <div class="t"><b>${esc(c.title)}</b><span class="muted small">${esc([c.author, c.publisher, (c.pubdate || '').slice(0, 4), c.isbn ? '' : 'ISBNなし'].filter(Boolean).join(' ／ '))}</span></div>
         <button class="btn sm" data-pickbook="${i}">これ</button>
       </div>`).join('') : '<p class="muted">見つかりませんでした。言葉を短くして探してみてください。</p>';
   });
@@ -200,6 +226,13 @@ export default async function book(root, ctx, [bookId]) {
     const pick = e.target.closest('[data-pickbook]');
     if (!pick) return;
     const c = found[pick.dataset.pickbook];
+    if (!c.isbn) {
+      await lib.updateBook({ ...b, title: c.title, author: c.author || b.author, publisher: c.publisher || b.publisher,
+        pubdate: c.pubdate || b.pubdate, confirmed: true });
+      toast('本の情報を付け直しました（ISBN のない本です）');
+      ctx.refresh();
+      return;
+    }
     const existing = await lib.bookByIsbn(c.isbn);
     if (existing && existing.id !== b.id) {
       // 同じ本がすでに本棚にあれば、そちらにまとめる（貸出記録は消えない）
@@ -224,6 +257,12 @@ export default async function book(root, ctx, [bookId]) {
   });
 
   root.addEventListener('click', async e => {
+    if (e.target.id === 'confirm-book') {
+      await lib.updateBook({ ...b, confirmed: true });
+      toast('「本が未特定」から外しました');
+      ctx.refresh();
+      return;
+    }
     const fav = e.target.closest('[data-fav]');
     if (fav) {
       const on = await lib.toggleFavorite(fav.dataset.fav, b.id);

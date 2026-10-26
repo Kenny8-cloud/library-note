@@ -129,8 +129,8 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
   if (isSeries) return;
   const q = root.querySelector('#q');
   const draw = () => {
-    // 「本が未特定」は、ISBN がなく書名だけで登録された本（本の詳細で図書館のデータから付け直せる）
-    let list = state.who === 'unknown' ? all.filter(l => !l.book.isbn)
+    // 「本が未特定」は、ISBN がなく書名だけで登録され、まだ確かめていない本（lib.isUnidentified）
+    let list = state.who === 'unknown' ? all.filter(l => lib.isUnidentified(l.book))
       : state.who ? all.filter(l => l.kids.some(k => k.id === state.who)) : all;
     // 「お気に入り」は、子供を選んでいればその子の、全員ならだれかのお気に入り。同じ本は1冊だけ出す
     if (state.fav) {

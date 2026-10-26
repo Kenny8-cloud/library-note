@@ -31,7 +31,9 @@ async function findCandidates(q) {
   // 外国語版（韓国語・中国語など）は除く。かなのない書名は、記録の書名にもかながないときだけ残す
   const kana = s => /[ぁ-んァ-ヶ]/.test(s);
   const japanese = c => !/[가-힯]/.test(c.title) && (kana(c.title) || !kana(q));
-  return lists.flat().filter(c => c && c !== 'busy' && c.isbn && japanese(c) && !seen.has(c.isbn) && seen.add(c.isbn))
+  // ISBN のない古い本も候補に出す（選ぶと書名・作者が付き、「本が未特定」から外れる）
+  const keyOf = c => c.isbn || `${c.title}|${c.publisher}|${c.pubdate}`;
+  return lists.flat().filter(c => c && c !== 'busy' && japanese(c) && !seen.has(keyOf(c)) && seen.add(keyOf(c)))
     .map(c => ({ ...c, score: similarity(q, c.title) + (c.isChildren ? 0.05 : 0) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
@@ -41,7 +43,7 @@ export default async function identify(root, ctx) {
   const history = await lib.familyHistory();
   const skipped = new Set(await db.getSetting(SKIP_KEY, []));
   const seen = new Set();
-  const all = history.filter(l => !l.book.isbn && !seen.has(l.book.id) && seen.add(l.book.id));
+  const all = history.filter(l => lib.isUnidentified(l.book) && !seen.has(l.book.id) && seen.add(l.book.id));
   const queue = all.filter(l => !skipped.has(l.book.id));
 
   // 次の本の候補を先に探しておき、選んだらすぐ次が出るようにする
@@ -74,7 +76,7 @@ export default async function identify(root, ctx) {
     const b = item.book;
     const q = item.q || b.title;
     main.innerHTML = `
-      <p class="muted small">残り ${queue.length - index}冊（ISBN がない本 ${all.length}冊）</p>
+      <p class="muted small">残り ${queue.length - index}冊（未特定の本 ${all.length}冊）</p>
       <div class="card identify-card">
         <span class="muted small">記録されている書名</span>
         <b class="identify-title">${esc(b.title)}</b>
@@ -107,7 +109,7 @@ export default async function identify(root, ctx) {
     }
     el.innerHTML = list.length ? `<p class="muted small">正しい本を選んでください</p>${list.map((c, i) => `<div class="row identify-row">
         ${cover(c, 'md')}
-        <div class="t"><b>${esc(c.title)}</b><span class="muted small">${esc([c.author, c.publisher, (c.pubdate || '').slice(0, 4)].filter(Boolean).join(' ／ '))}</span></div>
+        <div class="t"><b>${esc(c.title)}</b><span class="muted small">${esc([c.author, c.publisher, (c.pubdate || '').slice(0, 4), c.isbn ? '' : 'ISBNなし'].filter(Boolean).join(' ／ '))}</span></div>
         <button class="btn sm" data-pick="${i}">これ</button>
       </div>`).join('')}`
       : '<p class="muted">見つかりませんでした。書名を短くしたり、シリーズ名だけにしたりして「検索」してください。</p>';
@@ -130,12 +132,12 @@ export default async function identify(root, ctx) {
       pick.disabled = true;
       const c = item.list[pick.dataset.pick];
       const b = item.book;
-      const existing = await lib.bookByIsbn(c.isbn);
+      const existing = c.isbn ? await lib.bookByIsbn(c.isbn) : null;
       if (existing && existing.id !== b.id) {
         // 同じ本がすでに本棚にあれば、そちらにまとめる（貸出記録は消えない）
         await lib.mergeBook(b.id, existing.id);
       } else {
-        await lib.updateBook({ ...b, isbn: c.isbn, title: c.title, author: c.author || b.author, publisher: c.publisher || b.publisher,
+        await lib.updateBook({ ...b, isbn: c.isbn || null, title: c.title, author: c.author || b.author, publisher: c.publisher || b.publisher, confirmed: true,
           pubdate: c.pubdate || b.pubdate, coverUrl: c.coverUrl || null });
       }
       found++;

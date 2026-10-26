@@ -105,6 +105,12 @@ export async function ensureBook(info) {
   return db.put('books', book);
 }
 
+// 「本が未特定」= ISBN がなく、まだ確かめていない本。表紙の写真を設定したり、情報を編集して保存したり、
+// 「このままでよい」を押したりした本（ISBN のない古い本など）は、特定済みとして扱う
+export function isUnidentified(book) {
+  return !book.isbn && !book.confirmed && !book.coverData;
+}
+
 export async function updateBook(book) {
   return db.put('books', book);
 }
