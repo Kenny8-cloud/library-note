@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '3.13（2026-10-26）';
+export const APP_VERSION = '3.14（2026-10-26）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,9 +21,31 @@ function isbn10(isbn) {
   return body + (c === 10 ? 'X' : String(c));
 }
 
-function amazonCover(isbn) {
+// small: 本棚を縮小したときなど、表紙を小さく出すとき。中くらいの画像（大きい画像の約5分の1の容量）を使う
+function amazonCover(isbn, small) {
   const i10 = isbn10(isbn);
-  return i10 ? `https://images-na.ssl-images-amazon.com/images/P/${i10}.09.LZZZZZZZ.jpg` : '';
+  return i10 ? `https://images-na.ssl-images-amazon.com/images/P/${i10}.09.${small ? 'MZZZZZZZ' : 'LZZZZZZZ'}.jpg` : '';
+}
+
+// 表紙が見つからなかった本は端末に覚えておき、30日間は取りに行かない（毎回2か所に問い合わせて待つのを避ける）
+const MISS_KEY = 'cover-miss';
+const MISS_DAYS = 30;
+let misses;
+function missMap() {
+  if (misses) return misses;
+  try { misses = JSON.parse(localStorage.getItem(MISS_KEY) || '{}'); } catch { misses = {}; }
+  const limit = Date.now() - MISS_DAYS * 86400000;
+  for (const [k, t] of Object.entries(misses)) if (t < limit) delete misses[k];
+  return misses;
+}
+let missTimer;
+function rememberMiss(isbn) {
+  if (!isbn) return;
+  missMap()[isbn] = Date.now();
+  clearTimeout(missTimer);
+  missTimer = setTimeout(() => {
+    try { localStorage.setItem(MISS_KEY, JSON.stringify(misses)); } catch { /* 覚えられなくても動く */ }
+  }, 1000);
 }
 
 // 表紙が読み込めなかったときは次の候補へ。Google Books の「image not available」
@@ -38,19 +60,22 @@ window.__coverFail = img => {
     img.dataset.next = '';
     img.src = next;
   } else {
+    rememberMiss(img.dataset.isbn);
     img.remove();
   }
 };
 
+// size: '' / 'md' / 'lg'、または 'xs'（縮小した本棚。小さい画像を使う）
 export function cover(book, size = '') {
   const initial = esc((book.title || '？').slice(0, 6));
   // Amazon は表紙がないと 1x1 の画像を返すので確実に見分けられる。Google の「image not available」は
   // 端末によって大きさが違い見分けにくいため、Amazon を先に試し、なければ Google（または書誌データの表紙）にする
-  const amazon = amazonCover(book.isbn);
-  const first = amazon || book.coverUrl;
+  const missed = book.isbn && missMap()[book.isbn];
+  const amazon = missed ? '' : amazonCover(book.isbn, size === 'xs');
+  const first = missed ? '' : amazon || book.coverUrl;
   const next = amazon && book.coverUrl ? book.coverUrl : '';
   const img = first
-    ? `<img src="${esc(first)}" data-next="${esc(next)}" alt="" loading="lazy"
+    ? `<img src="${esc(first)}" data-next="${esc(next)}" data-isbn="${esc(book.isbn || '')}" alt="" loading="lazy" decoding="async"
         onerror="__coverFail(this)" onload="__coverLoad(this)">`
     : '';
   return `<div class="cover ${size}"><span>${initial}</span>${img}</div>`;

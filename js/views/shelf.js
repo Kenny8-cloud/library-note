@@ -54,7 +54,7 @@ function historyHtml(history, q, seriesNames, limit = Infinity, favs = new Map()
   return count + [...groups].map(([label, loans]) => `
     <h3 class="month">${esc(label)}<small>${totals.get(label)}冊</small></h3>
     <div class="shelf"${byYear ? ' data-year' : ''}>${loans.map(l => `
-      <a href="#/book/${esc(l.book.id)}">${cover(l.book)}${favs.has(l.book.id) ? '<em class="fav-mark" aria-label="お気に入り">♥</em>' : ''}<span>${esc(l.book.title)}</span>
+      <a href="#/book/${esc(l.book.id)}">${cover(l.book, byYear ? 'xs' : '')}${favs.has(l.book.id) ? '<em class="fav-mark" aria-label="お気に入り">♥</em>' : ''}<span>${esc(l.book.title)}</span>
         <i class="who">${(l.kids || []).map(k => `<b style="background:${esc(k.color)}" title="${esc(k.name)}"></b>`).join('')}</i></a>`).join('')}
     </div>`).join('')
     + (list.length > limit ? `<button class="btn ghost" id="more">さらに表示（残り ${list.length - limit}冊）</button>` : '');
