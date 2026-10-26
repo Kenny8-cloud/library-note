@@ -457,3 +457,15 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 .identify-row { align-items: flex-start; }
 .identify-row .t b { white-space: normal; }
 .identify-skip { justify-content: center; }
+
+/* ---- 表紙の写真 ---- */
+.cover-photo .btn { display: inline-block; margin-top: 6px; }
+.cover-photo .link-btn { margin-left: 10px; }
+.cover-crop { margin-top: 10px; }
+.crop-stage { position: relative; user-select: none; -webkit-user-select: none; }
+.crop-stage img { display: block; width: 100%; height: auto; border-radius: 4px; }
+.crop-frame {
+  position: absolute; border: 3px solid var(--stamp); border-radius: 3px; cursor: move; touch-action: none;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .45);
+}
+.crop-stage { overflow: hidden; }

@@ -52,6 +52,19 @@ export default async function book(root, ctx, [bookId]) {
         <button class="btn" type="submit">保存</button>
       </form>
 
+      <div class="card cover-photo">
+        <h4>表紙</h4>
+        <p class="muted small">表紙が出ないとき・違うときは、本の表紙を撮影するか、写真（Amazon の画面のスクリーンショットなど）を選んでください。</p>
+        <label class="btn ghost sm">📷 表紙の写真を設定<input type="file" id="cover-file" accept="image/*" hidden></label>
+        ${b.coverData ? '<button class="link-btn danger small" id="cover-clear">設定した写真を外す</button>' : ''}
+        <div class="cover-crop" id="cover-crop" hidden>
+          <div class="crop-stage"><img id="crop-img" alt=""><div class="crop-frame" id="crop-frame"></div></div>
+          <label class="field">枠の大きさ<input type="range" id="crop-size" min="15" max="100" value="80"></label>
+          <p class="muted small">枠をドラッグして表紙に合わせてください。</p>
+          <div class="btns"><button class="btn sm" id="crop-save">この範囲で保存</button><button class="link-btn" id="crop-cancel">やめる</button></div>
+        </div>
+      </div>
+
       <details class="card" id="lookup" ${b.isbn ? '' : 'open'}>
         <summary><h4 style="display:inline">${b.isbn ? '別の本に付け直す（図書館のデータで探す）' : '図書館のデータで本を探す'}</h4></summary>
         ${b.isbn ? '' : '<p class="muted small">この本はまだ特定できていません。正しい本を選ぶと、表紙や作者が付きます。</p>'}
@@ -80,6 +93,63 @@ export default async function book(root, ctx, [bookId]) {
       <button class="link-btn danger delete-book" id="delete-book">この本を本棚から削除</button>
       <p class="muted small center">間違えて登録したときに使います。家族全員の貸出記録も消えます。</p>
     </main>`;
+
+  // ---- 表紙の写真 ----
+  // 写真の上に表紙の形（5:7）の枠を出し、ドラッグと大きさのつまみで範囲を決めて、小さな JPEG にして本に保存する
+  const crop = root.querySelector('#cover-crop');
+  const cropImg = root.querySelector('#crop-img');
+  const frame = root.querySelector('#crop-frame');
+  const sizeInput = root.querySelector('#crop-size');
+  const box = { x: 0, y: 0, w: 0, h: 0 };
+  const placeFrame = (keepCenter = true) => {
+    const W = cropImg.clientWidth, H = cropImg.clientHeight;
+    const cx = keepCenter && box.w ? box.x + box.w / 2 : W / 2, cy = keepCenter && box.h ? box.y + box.h / 2 : H / 2;
+    let w = W * sizeInput.value / 100;
+    if (w * 7 / 5 > H) w = H * 5 / 7;
+    box.w = w; box.h = w * 7 / 5;
+    box.x = Math.min(Math.max(0, cx - w / 2), W - box.w);
+    box.y = Math.min(Math.max(0, cy - box.h / 2), H - box.h);
+    Object.assign(frame.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` });
+  };
+  root.querySelector('#cover-file').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    cropImg.onload = () => { crop.hidden = false; box.w = 0; placeFrame(false); crop.scrollIntoView({ block: 'center' }); };
+    cropImg.src = URL.createObjectURL(file);
+    e.target.value = '';
+  });
+  sizeInput.addEventListener('input', () => placeFrame());
+  let drag = null;
+  frame.addEventListener('pointerdown', e => {
+    drag = { px: e.clientX, py: e.clientY, x: box.x, y: box.y };
+    try { frame.setPointerCapture(e.pointerId); } catch { /* 指を離すまで追えなくても動く */ }
+    e.preventDefault();
+  });
+  frame.addEventListener('pointermove', e => {
+    if (!drag) return;
+    box.x = Math.min(Math.max(0, drag.x + e.clientX - drag.px), cropImg.clientWidth - box.w);
+    box.y = Math.min(Math.max(0, drag.y + e.clientY - drag.py), cropImg.clientHeight - box.h);
+    Object.assign(frame.style, { left: `${box.x}px`, top: `${box.y}px` });
+  });
+  frame.addEventListener('pointerup', () => { drag = null; });
+  frame.addEventListener('pointercancel', () => { drag = null; });
+  root.querySelector('#crop-cancel').addEventListener('click', () => { crop.hidden = true; URL.revokeObjectURL(cropImg.src); });
+  root.querySelector('#crop-save').addEventListener('click', async () => {
+    const r = cropImg.naturalWidth / cropImg.clientWidth;
+    const canvas = document.createElement('canvas');
+    canvas.width = 250; canvas.height = 350;   // 本の詳細の大きい表紙でもきれいに見え、1冊20KBほどに収まる大きさ
+    canvas.getContext('2d').drawImage(cropImg, box.x * r, box.y * r, box.w * r, box.h * r, 0, 0, canvas.width, canvas.height);
+    await lib.updateBook({ ...b, coverData: canvas.toDataURL('image/jpeg', 0.8) });
+    URL.revokeObjectURL(cropImg.src);
+    toast('表紙を設定しました');
+    ctx.refresh();
+  });
+  root.querySelector('#cover-clear')?.addEventListener('click', async () => {
+    const { coverData, ...rest } = b;
+    await lib.updateBook(rest);
+    toast('設定した写真を外しました');
+    ctx.refresh();
+  });
 
   root.querySelector('#edit-toggle').addEventListener('click', () => {
     const form = root.querySelector('#edit');

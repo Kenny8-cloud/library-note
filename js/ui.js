@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '3.15（2026-10-26）';
+export const APP_VERSION = '3.16（2026-10-26）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -68,6 +68,8 @@ window.__coverFail = img => {
 // size: '' / 'md' / 'lg'、または 'xs'（縮小した本棚。小さい画像を使う）
 export function cover(book, size = '') {
   const initial = esc((book.title || '？').slice(0, 6));
+  // 自分で撮った（選んだ）表紙の写真があれば、それをいちばん優先する
+  if (book.coverData) return `<div class="cover ${size}"><span>${initial}</span><img src="${esc(book.coverData)}" alt="" decoding="async"></div>`;
   // Amazon は表紙がないと 1x1 の画像を返すので確実に見分けられる。Google の「image not available」は
   // 端末によって大きさが違い見分けにくいため、Amazon を先に試し、なければ Google（または書誌データの表紙）にする
   const missed = book.isbn && missMap()[book.isbn];
