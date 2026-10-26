@@ -141,7 +141,11 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
         return hit && !seen.has(l.book.id) && seen.add(l.book.id);
       });
     }
-    listEl.innerHTML = historyHtml(list, state.q, seriesNames, Math.max(state.limit, pageFor(size)), favs, size < SMALL);
+    // 「本が未特定」のときは、まとめて特定する画面への入口を出す（特定すると表紙が付く）
+    const unknownBanner = state.who === 'unknown' && list.length
+      ? `<a class="identify-banner" href="#/identify"><b>まとめて本を特定する ›</b>
+          <small>ISBN がない本には表紙が出ません。図書館のデータから正しい本を選ぶと、表紙が付きます</small></a>` : '';
+    listEl.innerHTML = unknownBanner + historyHtml(list, state.q, seriesNames, Math.max(state.limit, pageFor(size)), favs, size < SMALL);
     const more = listEl.querySelector('#more');
     if (more) moreObserver.observe(more);
   };

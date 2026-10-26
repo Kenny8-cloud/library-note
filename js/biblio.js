@@ -16,14 +16,28 @@ async function slot(fn) {
   try { return await fn(); } finally { running--; waiting.shift()?.(); }
 }
 
+// 「問い合わせが多すぎる」（429）と言われたら、少し待って2回まで取り直す
+async function fetchBody(url, kind, ms = 20000) {
+  for (const wait of [2000, 5000, null]) {
+    try {
+      return await fetchOnce(url, kind, ms);
+    } catch (e) {
+      if (!e.busy || wait === null) throw e;
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
+}
+
 // 本文の読み込みまで含めて時間切れにする（ヘッダーだけ届いて本文が来ないことがあるため）
-function fetchBody(url, kind, ms = 20000) {
+function fetchOnce(url, kind, ms) {
   return slot(() => {
     const ctrl = new AbortController();
     let timer;
     const timeout = new Promise((_, reject) => { timer = setTimeout(() => { ctrl.abort(); reject(new Error('timeout')); }, ms); });
     const work = (async () => {
       const res = await fetch(url, { signal: ctrl.signal });
+      // 429 は問い合わせが多すぎるときの応答。しばらく待てば使えるので、画面で「混み合っています」と出せるよう分けておく
+      if (res.status === 429) throw Object.assign(new Error('busy'), { busy: true });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return kind === 'json' ? res.json() : res.text();
     })();

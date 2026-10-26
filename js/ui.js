@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '3.14（2026-10-26）';
+export const APP_VERSION = '3.15（2026-10-26）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -49,10 +49,10 @@ function rememberMiss(isbn) {
 }
 
 // 表紙が読み込めなかったときは次の候補へ。Google Books の「image not available」
-// （ブラウザでは 128x186、それ以外では 128x170 で返る）と Amazon の「画像なし」（1x1）は表紙なしとして扱う
+// （「image not available」の文字は 128x170・128x186、灰色の本の絵は 128x184 で返る）と Amazon の「画像なし」（1x1）は表紙なしとして扱う
 window.__coverLoad = img => {
   const w = img.naturalWidth, h = img.naturalHeight;
-  if (w < 20 || (w === 128 && (h === 170 || h === 186))) window.__coverFail(img);
+  if (w < 20 || (w === 128 && (h === 170 || h === 184 || h === 186))) window.__coverFail(img);
 };
 window.__coverFail = img => {
   const next = img.dataset.next;

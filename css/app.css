@@ -444,3 +444,16 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 #list.tiny .shelf .cover { border-radius: 1px; box-shadow: none; }
 #list.tiny .shelf .fav-mark { font-size: 9px; top: 0; left: 1px; }
 #list.tiny .month { margin-top: 10px; }
+
+/* ---- まとめて本を特定 ---- */
+.identify-banner {
+  display: block; padding: 10px 14px; margin-bottom: 8px; border-radius: 6px;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent);
+}
+.identify-banner b { display: block; font-size: 15px; }
+.identify-banner small { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
+.identify-card { display: flex; flex-direction: column; gap: 2px; }
+.identify-title { font-family: var(--serif); font-size: 19px; line-height: 1.4; }
+.identify-row { align-items: flex-start; }
+.identify-row .t b { white-space: normal; }
+.identify-skip { justify-content: center; }
