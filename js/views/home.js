@@ -76,8 +76,13 @@ export default async function home(root, ctx) {
       </section>
 
       <div class="drawers">
-        <a class="drawer" href="#/receipt"><span class="plate">🧾</span><b>借りた本を登録</b><small>レシートを撮影</small></a>
-        <a class="drawer" href="#/scan"><span class="plate">▥</span><b>借りた本を登録</b><small>本のバーコードを読む</small></a>
+        <div class="drawer register-drawer">
+          <b>借りた本を登録</b>
+          <div class="register-ways">
+            <a href="#/receipt"><span class="plate">🧾</span>レシートを撮影</a>
+            <a href="#/scan"><span class="plate">▥</span>本のバーコードを読む</a>
+          </div>
+        </div>
         <a class="drawer" href="#/scan/check"><span class="plate">🔍</span><b>貸出履歴の確認</b><small>借りたことがあるか調べる</small></a>
         <a class="drawer" href="#/review"><span class="plate">📖</span><b>読書のきろく</b><small>1年をふりかえる</small></a>
       </div>

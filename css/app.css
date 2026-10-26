@@ -417,3 +417,13 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .chip.fav-chip.on { background: #3d1f29; color: #f59bb5; }
 }
+
+/* ホームの「借りた本を登録」: 1枚の引き出しに、レシートとバーコードの2つの入口 */
+.register-drawer { grid-column: 1 / -1; padding: 14px 12px 20px; }
+.register-ways { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.register-ways a {
+  display: block; padding: 10px 6px; border-radius: 5px; color: #f6ecd8; font-size: 13px; font-weight: 600;
+  background: rgba(0, 0, 0, .16); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .25), 0 1px 0 rgba(255, 255, 255, .12);
+}
+.register-ways a:active { background: rgba(0, 0, 0, .28); }
+.register-ways .plate { width: 70%; margin-bottom: 6px; }
