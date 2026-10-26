@@ -76,6 +76,9 @@ export default async function book(root, ctx, [bookId]) {
       </div>
 
       <button class="btn ghost" id="wish" ${wished ? 'disabled' : ''}>${wished ? '借りたい本に追加済み' : '＋ 借りたい本に追加'}</button>
+
+      <button class="link-btn danger delete-book" id="delete-book">この本を本棚から削除</button>
+      <p class="muted small center">間違えて登録したときに使います。家族全員の貸出記録も消えます。</p>
     </main>`;
 
   root.querySelector('#edit-toggle').addEventListener('click', () => {
@@ -166,6 +169,14 @@ export default async function book(root, ctx, [bookId]) {
       toast('削除しました');
       // この子の記録がなくなったら本棚へ戻る
       if (mine.length <= 1) ctx.go('shelf'); else ctx.refresh();
+      return;
+    }
+    if (e.target.id === 'delete-book') {
+      const n = loans.length;
+      if (!confirm(`「${b.title}」を本棚から削除しますか？${n ? `\n家族の貸出記録 ${n}件も消えます。` : ''}\n元に戻せません。`)) return;
+      await lib.deleteBook(b.id);
+      toast('本棚から削除しました');
+      ctx.go('shelf');
       return;
     }
     if (e.target.id === 'add-loan') {

@@ -131,6 +131,14 @@ export async function mergeBook(fromId, intoId) {
   await db.remove('books', fromId);
 }
 
+// 間違えて登録した本を本棚から消す。家族全員の貸出記録・借りたい本・お気に入りもまとめて消す
+export async function deleteBook(bookId) {
+  for (const l of await db.byIndex('loans', 'bookId', bookId)) await db.remove('loans', l.id);
+  for (const w of await db.all('wishlist')) if (w.bookId === bookId) await db.remove('wishlist', w.id);
+  await db.setSetting('favorites', (await allFavorites()).filter(f => f.bookId !== bookId));
+  await db.remove('books', bookId);
+}
+
 export async function setBookSeries(book, seriesTitle, volume) {
   const series = await ensureSeries(seriesTitle);
   book.seriesId = series ? series.id : null;

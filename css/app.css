@@ -427,3 +427,4 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 }
 .register-ways a:active { background: rgba(0, 0, 0, .28); }
 .register-ways .plate { width: 70%; margin-bottom: 6px; }
+.delete-book { display: block; margin: 24px auto 4px; }
