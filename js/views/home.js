@@ -46,6 +46,14 @@ export default async function home(root, ctx) {
         </div>
       </div>
 
+      <section class="bookshelf-card">
+        <h3>最近借りた本${latest.length ? `<small>${esc(formatDate(latestDate))} に${latest.length}冊</small>` : ''}</h3>
+        ${latest.length ? `
+          <div class="wood-shelf">${latest.map(l => `<a href="#/book/${esc(l.book.id)}" title="${esc(l.book.title)}">${cover(l.book)}</a>`).join('')}</div>
+          <div class="shelf-board"></div>`
+        : `<p class="empty muted">まだ記録がありません。図書館で借りたら、レシートを撮影して登録しましょう。</p>`}
+      </section>
+
       ${[11, 0].includes(now.getMonth()) ? `<a class="review-banner" href="#/review/${defaultYear()}">
         <span>🎉</span><div><b>${defaultYear()}年の読書をふりかえろう</b><small>子供ごとの冊数・よく読んだシリーズ・お気に入り</small></div><i>›</i></a>` : ''}
 
@@ -67,13 +75,6 @@ export default async function home(root, ctx) {
         <span class="go">予約へ ›</span>
       </a>
 
-      <section class="bookshelf-card">
-        <h3>最近借りた本${latest.length ? `<small>${esc(formatDate(latestDate))} に${latest.length}冊</small>` : ''}</h3>
-        ${latest.length ? `
-          <div class="wood-shelf">${latest.map(l => `<a href="#/book/${esc(l.book.id)}" title="${esc(l.book.title)}">${cover(l.book)}</a>`).join('')}</div>
-          <div class="shelf-board"></div>`
-        : `<p class="empty muted">まだ記録がありません。図書館で借りたら、レシートを撮影して登録しましょう。</p>`}
-      </section>
 
       <div class="drawers">
         <div class="drawer register-drawer">
