@@ -16,7 +16,19 @@ const norm = s => String(s || '').normalize('NFKC').toLowerCase().replace(/[\s�
 // 一度に描く冊数。1,700冊以上を一度に並べるとスマホで描画に時間がかかるので、少しずつ増やす
 const PAGE = 120;
 
-function historyHtml(history, q, seriesNames, limit = Infinity, favs = new Map()) {
+// 表紙の幅（px）。ピンチで変えられ、端末に覚えておく。SMALL より小さいと表紙だけの表示になる
+const SIZE_KEY = 'shelf-cover-size';
+const DEFAULT_SIZE = 72, MIN_SIZE = 22, MAX_SIZE = 160, SMALL = 46;
+function loadSize() {
+  try { return Number(localStorage.getItem(SIZE_KEY)) || DEFAULT_SIZE; } catch { return DEFAULT_SIZE; }
+}
+function saveSize(v) {
+  try { localStorage.setItem(SIZE_KEY, String(v)); } catch { /* 覚えられなくても動く */ }
+}
+// 表紙が小さいほど1画面に入る冊数が増えるので、最初に描く冊数も増やす（面積の比で）
+const pageFor = size => Math.round(PAGE * (DEFAULT_SIZE / size) ** 2);
+
+function historyHtml(history, q, seriesNames, limit = Infinity, favs = new Map(), byYear = false) {
   const needle = norm(q);
   const list = needle
     ? history.filter(l => norm(`${l.book.title}${l.book.author}${seriesNames.get(l.book.seriesId) || ''}`).includes(needle))
@@ -29,14 +41,19 @@ function historyHtml(history, q, seriesNames, limit = Infinity, favs = new Map()
   if (!list.length) return `${count}<p class="empty">「${esc(q)}」に当てはまる本はありません。</p>`;
 
   const groups = new Map();
+  const keyOf = l => (byYear ? (l.borrowedAt ? `${l.borrowedAt.slice(0, 4)}年` : '日付なし') : monthLabel(l.borrowedAt));
+  // 見出しの冊数は、まだ表示していない分も含めた数にする
+  const totals = new Map();
+  for (const l of list) totals.set(keyOf(l), (totals.get(keyOf(l)) || 0) + 1);
   for (const l of list.slice(0, limit)) {
-    const key = monthLabel(l.borrowedAt);
+    // 縮小しているときは年ごとにまとめ、1年に読んだ本の多さが表紙の量で分かるようにする
+    const key = keyOf(l);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(l);
   }
   return count + [...groups].map(([label, loans]) => `
-    <h3 class="month">${esc(label)}<small>${loans.length}冊</small></h3>
-    <div class="shelf">${loans.map(l => `
+    <h3 class="month">${esc(label)}<small>${totals.get(label)}冊</small></h3>
+    <div class="shelf"${byYear ? ' data-year' : ''}>${loans.map(l => `
       <a href="#/book/${esc(l.book.id)}">${cover(l.book)}${favs.has(l.book.id) ? '<em class="fav-mark" aria-label="お気に入り">♥</em>' : ''}<span>${esc(l.book.title)}</span>
         <i class="who">${(l.kids || []).map(k => `<b style="background:${esc(k.color)}" title="${esc(k.name)}"></b>`).join('')}</i></a>`).join('')}
     </div>`).join('')
@@ -100,6 +117,11 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
           <button class="chip ${state.who === 'unknown' ? 'on' : ''}" data-who="unknown">？ 本が未特定</button>
           <button class="chip fav-chip ${state.fav ? 'on' : ''}" id="fav-only">♥ お気に入り</button>
         </div>
+        <div class="zoom-bar">
+          <span class="muted small">ピンチで拡大・縮小</span>
+          <button class="zoom-btn" data-zoom="-1" aria-label="表紙を小さく">－</button>
+          <button class="zoom-btn" data-zoom="1" aria-label="表紙を大きく">＋</button>
+        </div>
         <div id="list"></div>`}
     </main>
     ${tabs('shelf')}`;
@@ -119,8 +141,74 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
         return hit && !seen.has(l.book.id) && seen.add(l.book.id);
       });
     }
-    root.querySelector('#list').innerHTML = historyHtml(list, state.q, seriesNames, state.limit, favs);
+    listEl.innerHTML = historyHtml(list, state.q, seriesNames, Math.max(state.limit, pageFor(size)), favs, size < SMALL);
+    const more = listEl.querySelector('#more');
+    if (more) moreObserver.observe(more);
   };
+
+  // ---- 表紙の大きさ（ピンチ・－＋ボタン） ----
+  const listEl = root.querySelector('#list');
+  let size = loadSize();
+  const applySize = () => {
+    listEl.style.setProperty('--cw', `${size}px`);
+    // 小さくしたときは書名や印を消して、表紙だけをぎっしり並べる
+    listEl.classList.toggle('tiny', size < SMALL);
+  };
+  // 大きさを変えても、画面の真ん中あたりに見えていた本がそのまま見えるように、スクロール位置を割合で保つ
+  const resize = next => {
+    next = Math.round(Math.min(MAX_SIZE, Math.max(MIN_SIZE, next)));
+    if (next === size) return;
+    const top = listEl.getBoundingClientRect().top + window.scrollY;
+    const ratio = (window.scrollY + window.innerHeight / 2 - top) / (listEl.offsetHeight || 1);
+    size = next;
+    applySize();
+    window.scrollTo(0, top + ratio * listEl.offsetHeight - window.innerHeight / 2);
+  };
+  // 小さくしたときに足りなくなった分を読み足す
+  const settle = () => {
+    saveSize(size);
+    // 表紙だけの表示との切り替え（月ごと⇔年ごと）や、読み足しが必要なときは描き直す
+    const byYearNow = Boolean(listEl.querySelector('.shelf[data-year]'));
+    if (byYearNow !== size < SMALL || (listEl.querySelector('#more') && pageFor(size) > state.limit)) draw();
+  };
+  applySize();
+
+  let pinch = null;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  listEl.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) pinch = { d: dist(e.touches), size };
+  }, { passive: true });
+  listEl.addEventListener('touchmove', e => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();   // ブラウザの画面全体の拡大を止め、表紙の大きさだけを変える
+    pinch.next = pinch.size * dist(e.touches) / pinch.d;
+    cancelAnimationFrame(pinch.raf);
+    pinch.raf = requestAnimationFrame(() => resize(pinch.next));
+  }, { passive: false });
+  listEl.addEventListener('touchend', e => {
+    if (!pinch || e.touches.length >= 2) return;
+    // 指を離したときは、まだ描いていない最後の大きさをすぐに反映する
+    cancelAnimationFrame(pinch.raf);
+    if (pinch.next) resize(pinch.next);
+    pinch = null;
+    settle();
+  });
+  // iPhone の Safari は touchmove を止めても画面全体を拡大しようとするので、そちらも止める
+  for (const ev of ['gesturestart', 'gesturechange']) listEl.addEventListener(ev, e => e.preventDefault());
+
+  root.querySelector('.zoom-bar').addEventListener('click', e => {
+    const b = e.target.closest('[data-zoom]');
+    if (!b) return;
+    resize(size * (b.dataset.zoom === '1' ? 1.35 : 1 / 1.35));
+    settle();
+  });
+
+  // 「さらに表示」が見えてきたら自動で続きを出す（縮小して一気にスクロールしたときのため）
+  const moreObserver = new IntersectionObserver(entries => {
+    if (!entries.some(x => x.isIntersecting)) return;
+    state.limit = Math.max(state.limit, pageFor(size)) + PAGE * 3;
+    draw();
+  }, { rootMargin: '600px' });
   q.addEventListener('input', () => { state.q = q.value; state.limit = PAGE; draw(); });
   root.querySelector('#who').addEventListener('click', e => {
     const favBtn = e.target.closest('#fav-only');
@@ -138,10 +226,11 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
     root.querySelectorAll('#who [data-who]').forEach(c => c.classList.toggle('on', c === b));
     draw();
   });
-  root.querySelector('#list').addEventListener('click', e => {
+  listEl.addEventListener('click', e => {
     if (e.target.id !== 'more') return;
-    state.limit += PAGE * 3;
+    state.limit = Math.max(state.limit, pageFor(size)) + PAGE * 3;
     draw();
   });
   draw();
+  return () => moreObserver.disconnect();
 }

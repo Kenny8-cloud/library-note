@@ -124,7 +124,7 @@ p { margin: 0; }
 .card > .row { border-bottom: 0; padding-top: 0; }
 .month { font-size: 13px; color: var(--sub); margin-top: 6px; display: flex; gap: 8px; align-items: baseline; }
 .month small { font-weight: 400; }
-.shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 12px 8px; }
+.shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cw, 72px), 1fr)); gap: 12px 8px; }
 .shelf a { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--sub); }
 .shelf .cover { width: 100%; height: auto; aspect-ratio: 5 / 7; }
 .shelf a > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; }
@@ -428,3 +428,19 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 .register-ways a:active { background: rgba(0, 0, 0, .28); }
 .register-ways .plate { width: 70%; margin-bottom: 6px; }
 .delete-book { display: block; margin: 24px auto 4px; }
+
+/* ---- 本棚の拡大・縮小 ---- */
+#list { touch-action: pan-x pan-y; }
+.zoom-bar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: -4px 0 -6px; }
+.zoom-bar .muted { margin-right: 4px; }
+.zoom-btn {
+  width: 34px; height: 30px; border-radius: 6px; border: 1px solid var(--line); background: var(--paper);
+  color: var(--ink); font-size: 16px; line-height: 1; cursor: pointer;
+}
+/* 縮小したときは表紙だけをすき間なく並べ、たくさん読んだことが一目で分かるようにする */
+#list.tiny .shelf { gap: 2px; }
+#list.tiny .shelf a { gap: 0; }
+#list.tiny .shelf a > span, #list.tiny .shelf .who, #list.tiny .cover span { display: none; }
+#list.tiny .shelf .cover { border-radius: 1px; box-shadow: none; }
+#list.tiny .shelf .fav-mark { font-size: 9px; top: 0; left: 1px; }
+#list.tiny .month { margin-top: 10px; }
