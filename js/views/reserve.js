@@ -47,8 +47,18 @@ export default async function reserve(root, ctx) {
           : it.series
           ? esc(`${it.series.title}${book.volume ? ` ${book.volume}巻` : ''}`)
           : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' }[it.wish.source] || '手動'}</span>`}</span></div>
+      <button class="link-btn small" data-hide="${esc(book.id)}">外す</button>
     </label>`;
   };
+
+  // 予約候補から外した本。兄弟で同じ本は1行にまとめ、「戻す」で全員の候補に戻す
+  const hidden = new Map();
+  for (const p of plan) {
+    for (const it of p.hidden) {
+      if (!hidden.has(it.book.id)) hidden.set(it.book.id, []);
+      hidden.get(it.book.id).push(it);
+    }
+  }
 
   // お気に入りに似た本。「候補に入れる」と借りたい本に入り、上のチェックの一覧に並ぶ。
   // 先の子の候補や提案と同じ本は出さない
@@ -111,6 +121,10 @@ export default async function reserve(root, ctx) {
         ${pending.length ? `<h4 class="sub-h">借りたい本</h4>${pending.map(row).join('')}` : ''}
         ${!releases.length && !series.length && !pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
         ${suggestHtml(current)}
+        ${hidden.size ? `<details class="reserved"><summary class="small">外した本 ${hidden.size}冊</summary>
+          ${[...hidden.values()].map(list => `<div class="row">${cover(list[0].book)}<div class="t"><b>${esc(list[0].book.title)}</b></div>
+            <button class="link-btn small" data-show="${esc(list[0].book.id)}">戻す</button></div>`).join('')}
+        </details>` : ''}
       </section>
     </main>
     <footer class="foot above-tabs">
@@ -144,6 +158,23 @@ export default async function reserve(root, ctx) {
   });
 
   root.addEventListener('click', async e => {
+    const hide = e.target.closest('[data-hide]');
+    if (hide) {
+      e.preventDefault();   // 行全体がチェックボックスのラベルなので、チェックが切り替わらないようにする
+      await lib.hideCandidates(rows.get(hide.dataset.hide).items);
+      checked.delete(hide.dataset.hide);
+      saveSelection();
+      toast('予約候補から外しました');
+      ctx.refresh();
+      return;
+    }
+    const show = e.target.closest('[data-show]');
+    if (show) {
+      e.preventDefault();
+      await lib.showCandidates(hidden.get(show.dataset.show));
+      ctx.refresh();
+      return;
+    }
     const sg = e.target.closest('[data-suggest]') || e.target.closest('[data-nosuggest]');
     if (sg) {
       e.preventDefault();

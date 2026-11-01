@@ -331,6 +331,7 @@ export async function moveWish(childId, id, dir) {
 // 子供ごとの予約候補: 新刊 → シリーズの次の巻 → 借りたい本（未予約）の順。予約済みは別に返す
 export async function reservationPlan() {
   const kids = await children();
+  const hiddenKeys = new Set(await db.getSetting('reserveHidden', []));
   const plan = [];
   for (const child of kids) {
     const wishes = await wishesOf(child.id);
@@ -357,9 +358,26 @@ export async function reservationPlan() {
     const reserved = wishes.filter(w => w.status === 'reserved');
     // 次の巻がまだ登録されていないシリーズ（シリーズ詳細で追加してもらう）
     const needVolume = reading.filter(s => !s.next);
-    plan.push({ child, releases, series, pending, reserved, needVolume });
+    const isHidden = it => hiddenKeys.has(`${child.id}|${it.book.id}`);
+    const shown = list => list.filter(it => !isHidden(it));
+    plan.push({
+      child, releases: shown(releases), series: shown(series), pending: shown(pending), reserved, needVolume,
+      hidden: [...releases, ...series, ...pending].filter(isHidden),
+    });
   }
   return plan;
+}
+
+// 予約候補から外す／戻す。シリーズの次の巻は計算で出てくるので、消すのではなく「外した」印を設定に残す。
+// 借りたい本も同じ扱いにして、間違えて外しても一覧から戻せるようにする
+export async function hideCandidates(items) {
+  const keys = await db.getSetting('reserveHidden', []);
+  await db.setSetting('reserveHidden', [...new Set([...keys, ...items.map(it => `${it.childId}|${it.book.id}`)])]);
+}
+
+export async function showCandidates(items) {
+  const drop = new Set(items.map(it => `${it.childId}|${it.book.id}`));
+  await db.setSetting('reserveHidden', (await db.getSetting('reserveHidden', [])).filter(k => !drop.has(k)));
 }
 
 // 選んだ候補を予約済みにする。シリーズの次の巻は借りたい本（予約済み）として記録する
