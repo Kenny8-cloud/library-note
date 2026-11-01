@@ -192,8 +192,8 @@ export async function familyHistory() {
 export async function addLoan(childId, bookId, borrowedAt = today()) {
   const loan = { id: db.newId(), childId, bookId, borrowedAt, createdAt: new Date().toISOString() };
   await db.put('loans', loan);
-  // 借りた本は借りたい本リストから外す
-  for (const w of await db.byIndex('wishlist', 'childId', childId)) {
+  // 借りた本は借りたい本リストから外す。予約候補は家族で1つなので、兄弟の分も外す
+  for (const w of await db.all('wishlist')) {
     if (w.bookId === bookId) await db.remove('wishlist', w.id);
   }
   return loan;

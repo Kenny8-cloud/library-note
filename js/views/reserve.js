@@ -94,6 +94,11 @@ export default async function reserve(root, ctx) {
         <span class="muted small">前回の予約: ${lastReservedAt ? esc(formatDate(lastReservedAt)) : 'まだありません'}</span>
         <a class="btn ghost sm" href="#/wishlist">借りたい本リストを管理</a>
       </div>
+      ${reserved.size ? `<details class="card reserved-top"><summary>🔖 予約済み（まだ借りていない） <b>${reserved.size}冊</b></summary>
+        ${[...reserved.values()].map(list => `<div class="row">${cover(list[0].book)}<div class="t"><b>${esc(list[0].book.title)}</b>
+          <span class="muted small">${esc(formatDate(list[0].reservedAt))} に予約</span></div>
+          <button class="link-btn small" data-unreserve="${esc(list[0].book.id)}">取り消す</button></div>`).join('')}
+      </details>` : ''}
       <section class="kid-sec">
         ${rowsOf('releases').length ? `<h4 class="sub-h">📣 新刊（最優先）</h4>${rowsOf('releases').map(row).join('')}` : ''}
         ${seriesRows.length ? `<h4 class="sub-h">シリーズの続き</h4>${seriesRows.map(row).join('')}` : ''}
@@ -104,11 +109,6 @@ export default async function reserve(root, ctx) {
         ${rowsOf('pending').length ? `<h4 class="sub-h">借りたい本</h4>${rowsOf('pending').map(row).join('')}` : ''}
         ${!rows.size ? '<p class="muted small">候補はありません。</p>' : ''}
         ${suggestHtml()}
-        ${reserved.size ? `<details class="reserved"><summary class="small">予約済み（まだ借りていない） ${reserved.size}冊</summary>
-          ${[...reserved.values()].map(list => `<div class="row">${cover(list[0].book)}<div class="t"><b>${esc(list[0].book.title)}</b>
-            <span class="muted small">${esc(formatDate(list[0].reservedAt))} に予約</span></div>
-            <button class="link-btn small" data-unreserve="${esc(list[0].book.id)}">取り消す</button></div>`).join('')}
-        </details>` : ''}
       </section>
     </main>
     <footer class="foot above-tabs">

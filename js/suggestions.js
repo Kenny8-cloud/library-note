@@ -33,7 +33,9 @@ export async function suggestionsOf(childId) {
     const b = await db.get('books', w.bookId);
     if (b?.isbn) wished.add(b.isbn);
   }
-  return (data?.byChild?.[childId] || []).filter(s => !dismissed.has(`${childId}|${s.isbn}`) && !wished.has(s.isbn));
+  // 提案を作ったあとに借りた本は出さない
+  const borrowed = new Set((await lib.historyOf(childId)).map(l => l.book.isbn).filter(Boolean));
+  return (data?.byChild?.[childId] || []).filter(s => !dismissed.has(`${childId}|${s.isbn}`) && !wished.has(s.isbn) && !borrowed.has(s.isbn));
 }
 
 export async function dismissSuggestion(childId, isbn) {
