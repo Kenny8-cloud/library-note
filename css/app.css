@@ -469,3 +469,7 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, .45);
 }
 .crop-stage { overflow: hidden; }
+
+/* 予約候補: どの子の候補かを示す小さな色の点 */
+.kid-dots { display: inline-flex; gap: 3px; margin-right: 6px; vertical-align: middle; }
+.kid-dots .dot { width: 8px; height: 8px; }

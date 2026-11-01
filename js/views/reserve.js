@@ -1,4 +1,5 @@
-// S-10 予約候補（家族全体）。子供ごとに「新刊 → シリーズの続き → 借りたい本」を並べ、チェックした本を予約する。
+// S-10 予約候補（家族全体）。予約はまとめて行うので子供別に分けず、「新刊 → シリーズの続き → 借りたい本」を1つの一覧に並べる。
+// チェックは最初は付けず、自分で選んだ本だけを予約する。
 import * as lib from '../library.js';
 import { esc, cover, formatDate, toast } from '../ui.js';
 import { topKids, tabs } from '../app.js';
@@ -6,57 +7,85 @@ import { suggestionsOf, needsRefresh, refreshSuggestions, dismissSuggestion, wis
 
 export const SELECTION_KEY = 'reserve-selection';
 
+function loadSelection() {
+  try { return JSON.parse(sessionStorage.getItem(SELECTION_KEY)) || []; } catch { return []; }
+}
+
 export default async function reserve(root, ctx) {
   const plan = await lib.reservationPlan();
   const { targetCount, maxCount, lastReservedAt } = await lib.reserveSettings();
-  const suggest = new Map();
-  for (const p of plan) suggest.set(p.child.id, await suggestionsOf(p.child.id));
-  const searching = await needsRefresh();
-  const items = new Map();
-  // シリーズの続きは最初から選んでおく。借りたい本は自分で選ぶ
-  const checked = new Set();
-  for (const p of plan) {
-    for (const it of [...p.releases, ...p.series, ...p.pending]) items.set(it.key, it);
-    // 新刊は最初に選んでおく（発売前の本は図書館にまだないので、自分で選ぶ）
-    p.releases.filter(it => !it.upcoming).forEach(it => checked.add(it.key));
-    p.series.forEach(it => checked.add(it.key));
-  }
+  const childOf = id => ctx.children.find(c => c.id === id);
+  const kidDots = ids => `<span class="kid-dots">${[...new Set(ids)].map(childOf).filter(Boolean)
+    .map(c => `<i class="dot" style="background:${esc(c.color)}" title="${esc(c.name)}"></i>`).join('')}</span>`;
 
-  // 兄弟で同じ本が候補になったときは、図書館では1冊の予約で済むので、冊数は1冊として数える
-  const firstChildOf = new Map();
-  for (const p of plan) {
-    for (const it of [...p.releases, ...p.series, ...p.pending]) if (!firstChildOf.has(it.book.id)) firstChildOf.set(it.book.id, p.child);
+  // 兄弟で同じ本は1行にまとめる（図書館では1冊の予約で済む）。予約すると、まとめた子全員の記録になる
+  const rows = new Map();
+  for (const section of ['releases', 'series', 'pending']) {
+    for (const p of plan) {
+      for (const it of p[section]) {
+        if (rows.has(it.book.id)) rows.get(it.book.id).items.push(it);
+        else rows.set(it.book.id, { section, book: it.book, main: it, items: [it] });
+      }
+    }
   }
-  const row = it => `<label class="row">
-      <input type="checkbox" class="chk-in" data-key="${esc(it.key)}" ${checked.has(it.key) ? 'checked' : ''}>
-      ${cover(it.book)}
-      <div class="t"><b>${esc(it.book.title)}</b>
-        ${firstChildOf.get(it.book.id).id !== it.childId ? `<span class="badge">${esc(firstChildOf.get(it.book.id).name)}と同じ本</span>` : ''}
-        <span class="muted small">${it.release
-          ? `<span class="badge acc">${it.upcoming ? '発売予定' : '新刊'}</span> ${esc(it.book.pubdate || '')}`
-          : it.series
-          ? esc(`${it.series.title}${it.book.volume ? ` ${it.book.volume}巻` : ''}`)
-          : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' }[it.wish.source] || '手動'}</span>`}</span></div>
+  const rowsOf = section => [...rows.values()].filter(r => r.section === section);
+  const seriesRows = rowsOf('series').sort((a, b) => a.main.series.title.localeCompare(b.main.series.title, 'ja'));
+
+  // 選んだ本は描き直しても残す（お気に入りに似た本を候補に入れたときなど）。チェックは最初は付けない
+  const saved = new Set(loadSelection());
+  const checked = new Set([...rows.values()].filter(r => r.items.some(it => saved.has(it.key))).map(r => r.book.id));
+  const saveSelection = () => {
+    const keys = [...rows.values()].filter(r => checked.has(r.book.id)).flatMap(r => r.items.map(it => it.key));
+    try { sessionStorage.setItem(SELECTION_KEY, JSON.stringify(keys)); } catch { /* 下の画面で候補なしになる */ }
+  };
+
+  const row = ({ book, main, items }) => `<label class="row">
+      <input type="checkbox" class="chk-in" data-book="${esc(book.id)}" ${checked.has(book.id) ? 'checked' : ''}>
+      ${cover(book)}
+      <div class="t"><b>${esc(book.title)}</b>
+        <span class="muted small">${kidDots(items.map(it => it.childId))}${main.release
+          ? `<span class="badge acc">${main.upcoming ? '発売予定' : '新刊'}</span> ${esc(book.pubdate || '')}`
+          : main.series
+          ? esc(`${main.series.title}${book.volume ? ` ${book.volume}巻` : ''}`)
+          : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' }[main.wish.source] || '手動'}</span>`}</span></div>
     </label>`;
 
-  // お気に入りに似た本。「候補に入れる」と借りたい本に入り、上のチェックの一覧に並ぶ
-  const suggestHtml = p => {
-    const list = suggest.get(p.child.id) || [];
-    if (!list.length && !searching) return '';
-    return `<details class="suggest" ${list.length ? 'open' : ''}>
-      <summary><h4 class="sub-h">♥ お気に入りに似た本${list.length ? ` ${list.length}冊` : ''}</h4></summary>
-      ${list.map(s => `<div class="row">
+  // お気に入りに似た本も、兄弟で同じ本は1行にまとめる。「候補に入れる」と借りたい本に入り、上のチェックの一覧に並ぶ
+  const suggest = new Map();
+  for (const p of plan) {
+    for (const s of await suggestionsOf(p.child.id)) {
+      if (!suggest.has(s.isbn)) suggest.set(s.isbn, { s, childIds: [] });
+      suggest.get(s.isbn).childIds.push(p.child.id);
+    }
+  }
+  const searching = await needsRefresh();
+  const suggestHtml = () => {
+    if (!suggest.size && !searching) return '';
+    return `<details class="suggest" ${suggest.size ? 'open' : ''}>
+      <summary><h4 class="sub-h">♥ お気に入りに似た本${suggest.size ? ` ${suggest.size}冊` : ''}</h4></summary>
+      ${[...suggest.values()].map(({ s, childIds }) => `<div class="row">
         ${cover(s)}
         <div class="t"><b>${esc(s.title)}</b>
-          <span class="muted small">${esc(s.authorName)} ・ 「${esc(s.because)}」が好きなので</span></div>
+          <span class="muted small">${kidDots(childIds)}${esc(s.authorName)} ・ 「${esc(s.because)}」が好きなので</span></div>
         <div class="suggest-btns">
-          <button class="btn sm" data-suggest="${esc(p.child.id)}|${esc(s.isbn)}">候補に入れる</button>
-          <button class="link-btn small" data-nosuggest="${esc(p.child.id)}|${esc(s.isbn)}">いらない</button>
+          <button class="btn sm" data-suggest="${esc(s.isbn)}">候補に入れる</button>
+          <button class="link-btn small" data-nosuggest="${esc(s.isbn)}">いらない</button>
         </div>
       </div>`).join('')}
       ${searching ? '<p class="muted small">お気に入りに似た本を探しています…（1分ほどかかります）</p>' : ''}
     </details>`;
   };
+
+  // 次の巻が未登録のシリーズ（シリーズ詳細で追加してもらう）と、予約済みの本も、家族で1つの一覧にする
+  const needVolume = new Map();
+  for (const p of plan) for (const s of p.needVolume) if (!needVolume.has(s.series.id)) needVolume.set(s.series.id, s);
+  const reserved = new Map();
+  for (const p of plan) {
+    for (const w of p.reserved) {
+      if (!reserved.has(w.book.id)) reserved.set(w.book.id, []);
+      reserved.get(w.book.id).push(w);
+    }
+  }
 
   root.innerHTML = `
     ${topKids({ title: '予約候補（家族全体）' })}
@@ -65,24 +94,22 @@ export default async function reserve(root, ctx) {
         <span class="muted small">前回の予約: ${lastReservedAt ? esc(formatDate(lastReservedAt)) : 'まだありません'}</span>
         <a class="btn ghost sm" href="#/wishlist">借りたい本リストを管理</a>
       </div>
-      ${plan.map(p => `
-        <section class="kid-sec">
-          <h3 class="sec"><span class="dot" style="background:${esc(p.child.color)}"></span>${esc(p.child.name)}</h3>
-          ${p.releases.length ? `<h4 class="sub-h">📣 新刊（最優先）</h4>${p.releases.map(row).join('')}` : ''}
-          ${p.series.length ? `<h4 class="sub-h">シリーズの続き</h4>${p.series.map(row).join('')}` : ''}
-          ${p.needVolume.length ? `<details class="reserved"><summary class="small">次の巻が未登録のシリーズ ${p.needVolume.length}件（最新巻まで読んだシリーズを含む）</summary>
-            ${p.needVolume.map(s => `<a class="note" href="#/series/${esc(s.series.id)}">「${esc(s.series.title)}」 ${s.readCount}冊読了 ›</a>`).join('')}
-            <p class="muted small">続きが出ていれば、シリーズの画面で追加すると候補に出ます。読み終えたシリーズは「完了」にすると、ここに出なくなります。</p>
-          </details>` : ''}
-          ${p.pending.length ? `<h4 class="sub-h">借りたい本</h4>${p.pending.map(row).join('')}` : ''}
-          ${!p.releases.length && !p.series.length && !p.pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
-          ${suggestHtml(p)}
-          ${p.reserved.length ? `<details class="reserved"><summary class="small">予約済み（まだ借りていない） ${p.reserved.length}冊</summary>
-            ${p.reserved.map(w => `<div class="row">${cover(w.book)}<div class="t"><b>${esc(w.book.title)}</b>
-              <span class="muted small">${esc(formatDate(w.reservedAt))} に予約</span></div>
-              <button class="link-btn small" data-unreserve="${esc(w.id)}">取り消す</button></div>`).join('')}
-          </details>` : ''}
-        </section>`).join('')}
+      <section class="kid-sec">
+        ${rowsOf('releases').length ? `<h4 class="sub-h">📣 新刊（最優先）</h4>${rowsOf('releases').map(row).join('')}` : ''}
+        ${seriesRows.length ? `<h4 class="sub-h">シリーズの続き</h4>${seriesRows.map(row).join('')}` : ''}
+        ${needVolume.size ? `<details class="reserved"><summary class="small">次の巻が未登録のシリーズ ${needVolume.size}件（最新巻まで読んだシリーズを含む）</summary>
+          ${[...needVolume.values()].map(s => `<a class="note" href="#/series/${esc(s.series.id)}">「${esc(s.series.title)}」 ${s.readCount}冊読了 ›</a>`).join('')}
+          <p class="muted small">続きが出ていれば、シリーズの画面で追加すると候補に出ます。読み終えたシリーズは「完了」にすると、ここに出なくなります。</p>
+        </details>` : ''}
+        ${rowsOf('pending').length ? `<h4 class="sub-h">借りたい本</h4>${rowsOf('pending').map(row).join('')}` : ''}
+        ${!rows.size ? '<p class="muted small">候補はありません。</p>' : ''}
+        ${suggestHtml()}
+        ${reserved.size ? `<details class="reserved"><summary class="small">予約済み（まだ借りていない） ${reserved.size}冊</summary>
+          ${[...reserved.values()].map(list => `<div class="row">${cover(list[0].book)}<div class="t"><b>${esc(list[0].book.title)}</b>
+            <span class="muted small">${esc(formatDate(list[0].reservedAt))} に予約</span></div>
+            <button class="link-btn small" data-unreserve="${esc(list[0].book.id)}">取り消す</button></div>`).join('')}
+        </details>` : ''}
+      </section>
     </main>
     <footer class="foot above-tabs">
       <div class="count-line"><b id="count"></b><span class="muted small">目安 ${targetCount}冊 ・ 上限 ${maxCount}冊</span></div>
@@ -93,7 +120,7 @@ export default async function reserve(root, ctx) {
     ${tabs('reserve')}`;
 
   const update = () => {
-    const n = new Set([...checked].map(k => items.get(k)?.book.id).filter(Boolean)).size;
+    const n = checked.size;
     const count = root.querySelector('#count');
     count.textContent = `選択 ${n} / ${targetCount}冊`;
     count.classList.toggle('warn-text', n > targetCount);
@@ -107,9 +134,10 @@ export default async function reserve(root, ctx) {
   };
 
   root.addEventListener('change', e => {
-    const key = e.target.dataset.key;
-    if (!key) return;
-    if (e.target.checked) checked.add(key); else checked.delete(key);
+    const id = e.target.dataset.book;
+    if (!id) return;
+    if (e.target.checked) checked.add(id); else checked.delete(id);
+    saveSelection();
     update();
   });
 
@@ -118,29 +146,27 @@ export default async function reserve(root, ctx) {
     if (sg) {
       e.preventDefault();
       sg.disabled = true;
-      const [childId, isbn] = (sg.dataset.suggest || sg.dataset.nosuggest).split('|');
-      if (sg.dataset.suggest) {
-        await wishSuggestion(childId, suggest.get(childId).find(s => s.isbn === isbn));
-        toast('借りたい本に入れました');
-      } else {
-        await dismissSuggestion(childId, isbn);
+      const { s, childIds } = suggest.get(sg.dataset.suggest || sg.dataset.nosuggest);
+      for (const id of childIds) {
+        if (sg.dataset.suggest) await wishSuggestion(id, s); else await dismissSuggestion(id, s.isbn);
       }
+      if (sg.dataset.suggest) toast('借りたい本に入れました');
       ctx.refresh();
       return;
     }
     const un = e.target.closest('[data-unreserve]');
     if (un) {
       e.preventDefault();
-      const w = plan.flatMap(p => p.reserved).find(x => x.id === un.dataset.unreserve);
-      // シリーズの続きとして予約したものはリストから消し、手で入れたものは未予約に戻す
-      if (w.source === 'series') await lib.removeWish(w.id);
-      else await lib.updateWish({ ...w, status: 'none' });
+      for (const w of reserved.get(un.dataset.unreserve)) {
+        // シリーズの続きとして予約したものはリストから消し、手で入れたものは未予約に戻す
+        if (w.source === 'series') await lib.removeWish(w.id);
+        else await lib.updateWish({ ...w, status: 'none' });
+      }
       ctx.refresh();
       return;
     }
     if (e.target.id === 'go') {
-      const keys = [...checked].filter(k => items.has(k));
-      try { sessionStorage.setItem(SELECTION_KEY, JSON.stringify(keys)); } catch { /* 下の画面で候補なしになる */ }
+      saveSelection();
       ctx.go('reserve-confirm');
     }
   });

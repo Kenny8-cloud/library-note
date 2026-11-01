@@ -12,20 +12,16 @@ export default async function reserveConfirm(root, ctx) {
   const picked = keys.map(k => byKey.get(k)).filter(Boolean);
   if (!picked.length) { ctx.go('reserve'); return; }
 
-  const groups = plan.map(p => ({ child: p.child, items: picked.filter(it => it.childId === p.child.id) })).filter(g => g.items.length);
-  // 兄弟で同じ本は1回だけ書き出す（図書館では1冊の予約で済む）
+  // 予約はまとめて行うので、子供別に分けず1つの一覧にする。兄弟で同じ本は1回だけ書き出す（図書館では1冊の予約で済む）
   const seen = new Set();
-  const text = groups.map(g => {
-    const titles = g.items.filter(it => !seen.has(it.book.id) && seen.add(it.book.id)).map(it => it.book.title);
-    return titles.length ? `【${g.child.name}】\n${titles.join('\n')}` : '';
-  }).filter(Boolean).join('\n\n');
-  const uniqueCount = seen.size;
+  const books = picked.filter(it => !seen.has(it.book.id) && seen.add(it.book.id)).map(it => it.book);
+  const text = books.map(b => b.title).join('\n');
+  const uniqueCount = books.length;
 
   root.innerHTML = `
     ${topBack(`予約の確定（${uniqueCount}冊）`, { back: 'reserve' })}
     <main class="body">
-      ${groups.map(g => `<h3 class="sec"><span class="dot" style="background:${esc(g.child.color)}"></span>${esc(g.child.name)} ${g.items.length}冊</h3>
-        <div class="card list">${g.items.map(it => `<div class="item small">${esc(it.book.title)}${it.book.isbn ? `<span class="muted"> ISBN ${esc(it.book.isbn)}</span>` : ''}</div>`).join('')}</div>`).join('')}
+      <div class="card list">${books.map(b => `<div class="item small">${esc(b.title)}${b.isbn ? `<span class="muted"> ISBN ${esc(b.isbn)}</span>` : ''}</div>`).join('')}</div>
       <button class="btn ghost" id="copy">📋 書名をまとめてコピー</button>
       <p class="muted small">図書館のサイトで書名を検索して予約するときに使います。予約が終わったら、下のボタンを押してください。チェックしなかった本は次回まで候補に残ります。</p>
     </main>
