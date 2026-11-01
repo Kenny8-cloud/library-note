@@ -32,7 +32,7 @@ export const ctx = {
   childId: null,
   get child() { return this.children.find(c => c.id === this.childId) || null; },
   go(path) { location.hash = '#/' + path; },
-  refresh: () => render(),
+  refresh: () => render({ keepScroll: true }),   // 同じ画面の描き直しなので、スクロール位置はそのまま
 };
 
 function rememberKid(id) {
@@ -89,9 +89,10 @@ window.addEventListener('scroll', () => {
   scrollTimer = setTimeout(() => scrollPos.set(key, window.scrollY), 100);
 }, { passive: true });
 
-async function render() {
+async function render(opts) {
   const seq = ++renderSeq;
   const back = goingBack;
+  const keepY = opts?.keepScroll ? window.scrollY : null;
   goingBack = false;
   if (cleanup) { try { await cleanup(); } catch { /* 無視 */ } cleanup = null; }
   await scanner.stop();
@@ -109,7 +110,7 @@ async function render() {
   if (seq !== renderSeq) { if (typeof result === 'function') result(); return; }
   document.getElementById('app').replaceWith(root);
   cleanup = typeof result === 'function' ? result : null;
-  window.scrollTo(0, back ? (scrollPos.get(location.hash) || 0) : 0);
+  window.scrollTo(0, keepY ?? (back ? (scrollPos.get(location.hash) || 0) : 0));
 }
 
 document.addEventListener('click', e => {
