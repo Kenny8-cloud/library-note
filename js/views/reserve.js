@@ -36,12 +36,29 @@ export default async function reserve(root, ctx) {
     try { sessionStorage.setItem(SELECTION_KEY, JSON.stringify(keys)); } catch { /* 下の画面で候補なしになる */ }
   };
 
+  // 家族の誰かが借りたことがある本には印を付ける。過去のメモの本と ISBN つきの本が別々に登録されていることがあるので、
+  // 同じ本かどうかは書名で見る。履歴は新しい順なので、子供ごとの最初の1件が最後に借りた日になる
+  const titleKey = t => String(t || '').normalize('NFKC').toLowerCase().replace(/[\s・!?、。,.「」『』()（）〜~ー\-:：]/g, '');
+  const borrowed = new Map();
+  for (const l of await lib.familyHistory()) {
+    const key = titleKey(l.book.title);
+    if (!borrowed.has(key)) borrowed.set(key, new Map());
+    for (const k of l.kids) if (!borrowed.get(key).has(k.name)) borrowed.get(key).set(k.name, l.borrowedAt);
+  }
+  const borrowedBadge = book => {
+    const who = borrowed.get(titleKey(book.title));
+    if (!who) return '';
+    const text = [...who].map(([name, date]) => (date ? `${name} ${formatDate(date)}` : name)).join('、');
+    return `<span class="badge warn">借りたことあり（${esc(text)}）</span>`;
+  };
+
   const row = it => {
     const { book } = it;
     return `<label class="row">
       <input type="checkbox" class="chk-in" data-book="${esc(book.id)}" ${checked.has(book.id) ? 'checked' : ''}>
       ${cover(book)}
       <div class="t"><b>${esc(book.title)}</b>
+        ${borrowedBadge(book)}
         <span class="muted small">${it.release
           ? `<span class="badge acc">${it.upcoming ? '発売予定' : '新刊'}</span> ${esc(book.pubdate || '')}`
           : it.series
