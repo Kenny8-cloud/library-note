@@ -380,6 +380,18 @@ export async function showCandidates(items) {
   await db.setSetting('reserveHidden', (await db.getSetting('reserveHidden', [])).filter(k => !drop.has(k)));
 }
 
+// 予約候補を別の子へ移す。items は同じ本の候補（兄弟の分も含む）。借りたい本は移した先に付け替える。
+// シリーズの次の巻は計算で出てくるので、元の子では外した扱いにして、移した先の借りたい本に入れる
+export async function moveCandidate(items, toChildId) {
+  const { book } = items[0];
+  const others = items.filter(it => it.childId !== toChildId);
+  for (const it of others) if (it.wish) await db.remove('wishlist', it.wish.id);
+  // 新刊はシリーズの次の巻でもあることが多いので、借りたい本を消しても元の子に戻らないようにする
+  await hideCandidates(others.filter(it => it.series || it.release));
+  await showCandidates([{ childId: toChildId, book }]);
+  if (others.length === items.length) await addWish(toChildId, book.id, items.find(it => it.wish)?.wish.source || 'manual');
+}
+
 // 選んだ候補を予約済みにする。シリーズの次の巻は借りたい本（予約済み）として記録する
 export async function confirmReservation(items) {
   for (const it of items) {

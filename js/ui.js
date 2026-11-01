@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '3.23（2026-11-02）';
+export const APP_VERSION = '3.24（2026-11-02）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

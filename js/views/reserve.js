@@ -47,7 +47,10 @@ export default async function reserve(root, ctx) {
           : it.series
           ? esc(`${it.series.title}${book.volume ? ` ${book.volume}巻` : ''}`)
           : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' }[it.wish.source] || '手動'}</span>`}</span></div>
-      <button class="link-btn small" data-hide="${esc(book.id)}">外す</button>
+      <span class="row-acts">
+        ${ctx.children.filter(c => c.id !== current.child.id).map(c => `<button class="link-btn small" data-move="${esc(book.id)}" data-to="${esc(c.id)}">${esc(c.name)}へ</button>`).join('')}
+        <button class="link-btn small" data-hide="${esc(book.id)}">外す</button>
+      </span>
     </label>`;
   };
 
@@ -55,6 +58,7 @@ export default async function reserve(root, ctx) {
   const hidden = new Map();
   for (const p of plan) {
     for (const it of p.hidden) {
+      if (rows.has(it.book.id)) continue;   // 別の子へ移した本は、移した先の候補に出ている
       if (!hidden.has(it.book.id)) hidden.set(it.book.id, []);
       hidden.get(it.book.id).push(it);
     }
@@ -165,6 +169,14 @@ export default async function reserve(root, ctx) {
       checked.delete(hide.dataset.hide);
       saveSelection();
       toast('予約候補から外しました');
+      ctx.refresh();
+      return;
+    }
+    const move = e.target.closest('[data-move]');
+    if (move) {
+      e.preventDefault();
+      await lib.moveCandidate(rows.get(move.dataset.move).items, move.dataset.to);
+      toast(`${ctx.children.find(c => c.id === move.dataset.to)?.name}の候補に移しました`);
       ctx.refresh();
       return;
     }
