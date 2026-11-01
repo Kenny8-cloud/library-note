@@ -474,3 +474,7 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 /* 予約済みの本は、スクロールせずに開けるよう予約候補の一番上に置く */
 .reserved-top summary { cursor: pointer; font-size: 14px; }
 .reserved-top[open] summary { margin-bottom: 6px; }
+
+/* 画面の本文に置く子供のタブ（予約候補・借りたい本）。縦に伸びないようにする */
+.body > .kids { flex: none; }
+.body > .kids .kid { flex: 1; }

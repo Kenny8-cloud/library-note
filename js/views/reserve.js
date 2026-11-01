@@ -1,7 +1,7 @@
-// S-10 予約候補（家族全体）。子供ごとに「新刊 → シリーズの続き → 借りたい本」を並べる。
+// S-10 予約候補（家族全体）。上の子供のタブで切り替えて、その子の「新刊 → シリーズの続き → 借りたい本」を並べる。
 // チェックは最初は付けず、自分で選んだ本だけを予約する。予約済みの本は家族で1つにまとめて一番上に置く。
 import * as lib from '../library.js';
-import { esc, cover, formatDate, toast } from '../ui.js';
+import { esc, cover, formatDate, toast, kidChips } from '../ui.js';
 import { topKids, tabs } from '../app.js';
 import { suggestionsOf, needsRefresh, refreshSuggestions, dismissSuggestion, wishSuggestion } from '../suggestions.js';
 
@@ -14,19 +14,19 @@ function loadSelection() {
 export default async function reserve(root, ctx) {
   const plan = await lib.reservationPlan();
   const { targetCount, maxCount, lastReservedAt } = await lib.reserveSettings();
-  const childOf = id => ctx.children.find(c => c.id === id);
+  const current = plan.find(p => p.child.id === ctx.childId) || plan[0];
 
-  // 兄弟で同じ本は、それぞれの子の欄に出すがチェックは連動させ、1冊と数える（図書館では1冊の予約で済む）。
+  // 兄弟で同じ本は、最初の子のタブにだけ出す（図書館では1冊の予約で済む）。
   // 予約すると、その本が候補に入っている子全員の記録になる
   const rows = new Map();
-  for (const section of ['releases', 'series', 'pending']) {
-    for (const p of plan) {
-      for (const it of p[section]) {
-        if (rows.has(it.book.id)) rows.get(it.book.id).items.push(it);
-        else rows.set(it.book.id, { section, book: it.book, main: it, items: [it] });
-      }
+  for (const p of plan) {
+    for (const it of [...p.releases, ...p.series, ...p.pending]) {
+      if (rows.has(it.book.id)) rows.get(it.book.id).items.push(it);
+      else rows.set(it.book.id, { book: it.book, owner: p.child.id, items: [it] });
     }
   }
+  const mine = list => list.filter(it => rows.get(it.book.id).owner === current.child.id);
+  const releases = mine(current.releases), series = mine(current.series), pending = mine(current.pending);
 
   // 選んだ本は描き直しても残す（お気に入りに似た本を候補に入れたときなど）。チェックは最初は付けない
   const saved = new Set(loadSelection());
@@ -38,12 +38,10 @@ export default async function reserve(root, ctx) {
 
   const row = it => {
     const { book } = it;
-    const first = rows.get(book.id).main;
     return `<label class="row">
       <input type="checkbox" class="chk-in" data-book="${esc(book.id)}" ${checked.has(book.id) ? 'checked' : ''}>
       ${cover(book)}
       <div class="t"><b>${esc(book.title)}</b>
-        ${first.childId !== it.childId ? `<span class="badge">${esc(childOf(first.childId)?.name)}と同じ本</span>` : ''}
         <span class="muted small">${it.release
           ? `<span class="badge acc">${it.upcoming ? '発売予定' : '新刊'}</span> ${esc(book.pubdate || '')}`
           : it.series
@@ -52,12 +50,19 @@ export default async function reserve(root, ctx) {
     </label>`;
   };
 
-  // お気に入りに似た本。「候補に入れる」と借りたい本に入り、上のチェックの一覧に並ぶ
+  // お気に入りに似た本。「候補に入れる」と借りたい本に入り、上のチェックの一覧に並ぶ。
+  // 先の子の候補や提案と同じ本は出さない
   const suggest = new Map();
-  for (const p of plan) suggest.set(p.child.id, await suggestionsOf(p.child.id));
+  const taken = new Set([...rows.values()].filter(r => r.owner !== current.child.id).map(r => r.book.isbn).filter(Boolean));
+  for (const p of plan) {
+    const list = await suggestionsOf(p.child.id);
+    suggest.set(p.child.id, list);
+    if (p === current) break;
+    list.forEach(s => taken.add(s.isbn));
+  }
   const searching = await needsRefresh();
   const suggestHtml = p => {
-    const list = suggest.get(p.child.id) || [];
+    const list = suggest.get(p.child.id).filter(s => !taken.has(s.isbn));
     if (!list.length && !searching) return '';
     return `<details class="suggest" ${list.length ? 'open' : ''}>
       <summary><h4 class="sub-h">♥ お気に入りに似た本${list.length ? ` ${list.length}冊` : ''}</h4></summary>
@@ -95,19 +100,18 @@ export default async function reserve(root, ctx) {
           <span class="muted small">${esc(formatDate(list[0].reservedAt))} に予約</span></div>
           <button class="link-btn small" data-unreserve="${esc(list[0].book.id)}">取り消す</button></div>`).join('')}
       </details>` : ''}
-      ${plan.map(p => `
-        <section class="kid-sec">
-          <h3 class="sec"><span class="dot" style="background:${esc(p.child.color)}"></span>${esc(p.child.name)}</h3>
-          ${p.releases.length ? `<h4 class="sub-h">📣 新刊（最優先）</h4>${p.releases.map(row).join('')}` : ''}
-          ${p.series.length ? `<h4 class="sub-h">シリーズの続き</h4>${p.series.map(row).join('')}` : ''}
-          ${p.needVolume.length ? `<details class="reserved"><summary class="small">次の巻が未登録のシリーズ ${p.needVolume.length}件（最新巻まで読んだシリーズを含む）</summary>
-            ${p.needVolume.map(s => `<a class="note" href="#/series/${esc(s.series.id)}">「${esc(s.series.title)}」 ${s.readCount}冊読了 ›</a>`).join('')}
-            <p class="muted small">続きが出ていれば、シリーズの画面で追加すると候補に出ます。読み終えたシリーズは「完了」にすると、ここに出なくなります。</p>
-          </details>` : ''}
-          ${p.pending.length ? `<h4 class="sub-h">借りたい本</h4>${p.pending.map(row).join('')}` : ''}
-          ${!p.releases.length && !p.series.length && !p.pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
-          ${suggestHtml(p)}
-        </section>`).join('')}
+      <div class="kids">${kidChips(ctx.children, current.child.id)}</div>
+      <section class="kid-sec">
+        ${releases.length ? `<h4 class="sub-h">📣 新刊（最優先）</h4>${releases.map(row).join('')}` : ''}
+        ${series.length ? `<h4 class="sub-h">シリーズの続き</h4>${series.map(row).join('')}` : ''}
+        ${current.needVolume.length ? `<details class="reserved"><summary class="small">次の巻が未登録のシリーズ ${current.needVolume.length}件（最新巻まで読んだシリーズを含む）</summary>
+          ${current.needVolume.map(s => `<a class="note" href="#/series/${esc(s.series.id)}">「${esc(s.series.title)}」 ${s.readCount}冊読了 ›</a>`).join('')}
+          <p class="muted small">続きが出ていれば、シリーズの画面で追加すると候補に出ます。読み終えたシリーズは「完了」にすると、ここに出なくなります。</p>
+        </details>` : ''}
+        ${pending.length ? `<h4 class="sub-h">借りたい本</h4>${pending.map(row).join('')}` : ''}
+        ${!releases.length && !series.length && !pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
+        ${suggestHtml(current)}
+      </section>
     </main>
     <footer class="foot above-tabs">
       <div class="count-line"><b id="count"></b><span class="muted small">目安 ${targetCount}冊 ・ 上限 ${maxCount}冊</span></div>
@@ -135,8 +139,6 @@ export default async function reserve(root, ctx) {
     const id = e.target.dataset.book;
     if (!id) return;
     if (e.target.checked) checked.add(id); else checked.delete(id);
-    // 兄弟の欄にある同じ本のチェックもそろえる
-    root.querySelectorAll('[data-book]').forEach(c => { if (c.dataset.book === id) c.checked = e.target.checked; });
     saveSelection();
     update();
   });
