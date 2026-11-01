@@ -470,9 +470,6 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 }
 .crop-stage { overflow: hidden; }
 
-/* 予約候補: どの子の候補かを示す小さな色の点 */
-.kid-dots { display: inline-flex; gap: 3px; margin-right: 6px; vertical-align: middle; }
-.kid-dots .dot { width: 8px; height: 8px; }
 
 /* 予約済みの本は、スクロールせずに開けるよう予約候補の一番上に置く */
 .reserved-top summary { cursor: pointer; font-size: 14px; }
