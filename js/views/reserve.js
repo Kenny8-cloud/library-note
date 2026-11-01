@@ -1,4 +1,4 @@
-// S-10 予約候補（家族全体）。子供ごとに「シリーズの続き → 借りたい本」を並べ、チェックした本を予約する。
+// S-10 予約候補（家族全体）。子供ごとに「新刊 → シリーズの続き → 借りたい本」を並べ、チェックした本を予約する。
 import * as lib from '../library.js';
 import { esc, cover, formatDate, toast } from '../ui.js';
 import { topKids, tabs } from '../app.js';
@@ -16,21 +16,25 @@ export default async function reserve(root, ctx) {
   // シリーズの続きは最初から選んでおく。借りたい本は自分で選ぶ
   const checked = new Set();
   for (const p of plan) {
-    for (const it of [...p.series, ...p.pending]) items.set(it.key, it);
+    for (const it of [...p.releases, ...p.series, ...p.pending]) items.set(it.key, it);
+    // 新刊は最初に選んでおく（発売前の本は図書館にまだないので、自分で選ぶ）
+    p.releases.filter(it => !it.upcoming).forEach(it => checked.add(it.key));
     p.series.forEach(it => checked.add(it.key));
   }
 
   // 兄弟で同じ本が候補になったときは、図書館では1冊の予約で済むので、冊数は1冊として数える
   const firstChildOf = new Map();
   for (const p of plan) {
-    for (const it of [...p.series, ...p.pending]) if (!firstChildOf.has(it.book.id)) firstChildOf.set(it.book.id, p.child);
+    for (const it of [...p.releases, ...p.series, ...p.pending]) if (!firstChildOf.has(it.book.id)) firstChildOf.set(it.book.id, p.child);
   }
   const row = it => `<label class="row">
       <input type="checkbox" class="chk-in" data-key="${esc(it.key)}" ${checked.has(it.key) ? 'checked' : ''}>
       ${cover(it.book)}
       <div class="t"><b>${esc(it.book.title)}</b>
         ${firstChildOf.get(it.book.id).id !== it.childId ? `<span class="badge">${esc(firstChildOf.get(it.book.id).name)}と同じ本</span>` : ''}
-        <span class="muted small">${it.series
+        <span class="muted small">${it.release
+          ? `<span class="badge acc">${it.upcoming ? '発売予定' : '新刊'}</span> ${esc(it.book.pubdate || '')}`
+          : it.series
           ? esc(`${it.series.title}${it.book.volume ? ` ${it.book.volume}巻` : ''}`)
           : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' }[it.wish.source] || '手動'}</span>`}</span></div>
     </label>`;
@@ -64,13 +68,14 @@ export default async function reserve(root, ctx) {
       ${plan.map(p => `
         <section class="kid-sec">
           <h3 class="sec"><span class="dot" style="background:${esc(p.child.color)}"></span>${esc(p.child.name)}</h3>
+          ${p.releases.length ? `<h4 class="sub-h">📣 新刊（最優先）</h4>${p.releases.map(row).join('')}` : ''}
           ${p.series.length ? `<h4 class="sub-h">シリーズの続き</h4>${p.series.map(row).join('')}` : ''}
           ${p.needVolume.length ? `<details class="reserved"><summary class="small">次の巻が未登録のシリーズ ${p.needVolume.length}件（最新巻まで読んだシリーズを含む）</summary>
             ${p.needVolume.map(s => `<a class="note" href="#/series/${esc(s.series.id)}">「${esc(s.series.title)}」 ${s.readCount}冊読了 ›</a>`).join('')}
             <p class="muted small">続きが出ていれば、シリーズの画面で追加すると候補に出ます。読み終えたシリーズは「完了」にすると、ここに出なくなります。</p>
           </details>` : ''}
           ${p.pending.length ? `<h4 class="sub-h">借りたい本</h4>${p.pending.map(row).join('')}` : ''}
-          ${!p.series.length && !p.pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
+          ${!p.releases.length && !p.series.length && !p.pending.length ? '<p class="muted small">候補はありません。</p>' : ''}
           ${suggestHtml(p)}
           ${p.reserved.length ? `<details class="reserved"><summary class="small">予約済み（まだ借りていない） ${p.reserved.length}冊</summary>
             ${p.reserved.map(w => `<div class="row">${cover(w.book)}<div class="t"><b>${esc(w.book.title)}</b>

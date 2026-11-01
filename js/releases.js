@@ -95,6 +95,6 @@ export async function wishRelease(r) {
   const book = await lib.ensureBook({ isbn: r.isbn, title: r.title, author: r.author, publisher: r.publisher, pubdate: r.pubdate,
     coverUrl: `https://books.google.com/books/content?vid=ISBN${r.isbn}&printsec=frontcover&img=1&zoom=1` });
   if (!book.seriesId) await lib.setBookSeries(book, r.seriesTitle, r.volume);
-  for (const id of r.childIds) await lib.addWish(id, book.id, 'series');
+  for (const id of r.childIds) await lib.addWish(id, book.id, 'release');
   await dismissRelease(r.isbn);
 }

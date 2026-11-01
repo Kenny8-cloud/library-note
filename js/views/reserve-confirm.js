@@ -8,7 +8,7 @@ export default async function reserveConfirm(root, ctx) {
   let keys = [];
   try { keys = JSON.parse(sessionStorage.getItem(SELECTION_KEY)) || []; } catch { /* 空のまま */ }
   const plan = await lib.reservationPlan();
-  const byKey = new Map(plan.flatMap(p => [...p.series, ...p.pending]).map(it => [it.key, it]));
+  const byKey = new Map(plan.flatMap(p => [...p.releases, ...p.series, ...p.pending]).map(it => [it.key, it]));
   const picked = keys.map(k => byKey.get(k)).filter(Boolean);
   if (!picked.length) { ctx.go('reserve'); return; }
 

@@ -275,7 +275,7 @@ export async function seriesStatusOf(childId) {
 }
 
 // ---- 借りたい本 ----
-// status: none（まだ予約していない）/ reserved（予約済み）。source: manual / author / ai / series
+// status: none（まだ予約していない）/ reserved（予約済み）。source: manual / author / ai / series / favorite / release（新刊のお知らせから追加）
 export async function addWish(childId, bookId, source = 'manual', status = 'none') {
   const list = await db.byIndex('wishlist', 'childId', childId);
   const found = list.find(w => w.bookId === bookId);
@@ -328,7 +328,7 @@ export async function moveWish(childId, id, dir) {
 }
 
 // ---- 予約 ----
-// 子供ごとの予約候補: シリーズの次の巻 → 借りたい本（未予約）の順。予約済みは別に返す
+// 子供ごとの予約候補: 新刊 → シリーズの次の巻 → 借りたい本（未予約）の順。予約済みは別に返す
 export async function reservationPlan() {
   const kids = await children();
   const plan = [];
@@ -338,7 +338,14 @@ export async function reservationPlan() {
     const reading = (await seriesStatusOf(child.id)).filter(s => s.status === 'reading');
     // シリーズの次の巻。借りたい本リストに入っている巻も、ここに「シリーズの続き」として出す
     const nextOf = new Map(reading.filter(s => s.next).map(s => [s.next.id, s]));
-    const pendingWishes = wishes.filter(w => w.status !== 'reserved');
+    const notReserved = wishes.filter(w => w.status !== 'reserved');
+    // 新刊のお知らせから追加した本を最優先にする。未予約で source が series の本も、以前の版で新刊から追加したもの
+    const isRelease = w => w.source === 'release' || w.source === 'series';
+    const thisMonth = today().slice(0, 7);
+    const releases = notReserved.filter(isRelease)
+      .map(w => ({ kind: 'wish', key: `w:${w.id}`, childId: child.id, book: w.book, wish: w, release: true,
+        upcoming: (w.book.pubdate || '').slice(0, 7) > thisMonth }));
+    const pendingWishes = notReserved.filter(w => !isRelease(w));
     const series = [
       ...reading.filter(s => s.next && !wishedIds.has(s.next.id))
         .map(s => ({ kind: 'series', key: `s:${child.id}:${s.next.id}`, childId: child.id, book: s.next, series: s.series })),
@@ -350,7 +357,7 @@ export async function reservationPlan() {
     const reserved = wishes.filter(w => w.status === 'reserved');
     // 次の巻がまだ登録されていないシリーズ（シリーズ詳細で追加してもらう）
     const needVolume = reading.filter(s => !s.next);
-    plan.push({ child, series, pending, reserved, needVolume });
+    plan.push({ child, releases, series, pending, reserved, needVolume });
   }
   return plan;
 }

@@ -26,7 +26,7 @@ export default async function home(root, ctx) {
   const bookCount = new Set(history.map(l => l.bookId)).size;
 
   const plan = await lib.reservationPlan();
-  const candidates = plan.reduce((n, p) => n + p.series.length + p.pending.length, 0);
+  const candidates = plan.reduce((n, p) => n + p.releases.length + p.series.length + p.pending.length, 0);
   const now = new Date();
 
   root.innerHTML = `
