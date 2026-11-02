@@ -479,5 +479,16 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 .body > .kids { flex: none; }
 .body > .kids .kid { flex: 1; }
 
-/* 予約候補の行の右端のボタン（別の子へ移す・外す） */
-.row-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+
+/* 予約候補の長押しメニュー */
+label.row[data-press] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+label.row[data-press] img { pointer-events: none; }
+.sheet-back { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; }
+.sheet {
+  width: 100%; max-width: 560px; max-height: 85vh; overflow-y: auto; background: var(--paper); border-radius: 14px 14px 0 0;
+  padding: 16px 16px calc(14px + var(--safe-b)); display: flex; flex-direction: column; gap: 10px;
+}
+.sheet-title { font-size: 15px; line-height: 1.4; }
+.sheet-read { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.sheet-kids { display: flex; gap: 8px; flex-wrap: wrap; }
+.sheet-kids .btn { flex: 1; }

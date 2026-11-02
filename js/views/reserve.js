@@ -1,7 +1,7 @@
 // S-10 予約候補（家族全体）。上の子供のタブで切り替えて、その子の「新刊 → シリーズの続き → 借りたい本」を並べる。
 // チェックは最初は付けず、自分で選んだ本だけを予約する。予約済みの本は家族で1つにまとめて一番上に置く。
 import * as lib from '../library.js';
-import { esc, cover, formatDate, toast, kidChips } from '../ui.js';
+import { esc, cover, formatDate, toast, kidChips, today } from '../ui.js';
 import { topKids, tabs } from '../app.js';
 import { suggestionsOf, needsRefresh, refreshSuggestions, dismissSuggestion, wishSuggestion } from '../suggestions.js';
 
@@ -54,7 +54,7 @@ export default async function reserve(root, ctx) {
 
   const row = it => {
     const { book } = it;
-    return `<label class="row">
+    return `<label class="row" data-press="${esc(book.id)}">
       <input type="checkbox" class="chk-in" data-book="${esc(book.id)}" ${checked.has(book.id) ? 'checked' : ''}>
       ${cover(book)}
       <div class="t"><b>${esc(book.title)}</b>
@@ -64,11 +64,29 @@ export default async function reserve(root, ctx) {
           : it.series
           ? esc(`${it.series.title}${book.volume ? ` ${book.volume}巻` : ''}`)
           : `<span class="badge">${{ manual: '手動', author: '同じ作者', ai: 'AI', series: 'シリーズ', favorite: 'お気に入りから' }[it.wish.source] || '手動'}</span>`}</span></div>
-      <span class="row-acts">
-        ${ctx.children.filter(c => c.id !== current.child.id).map(c => `<button class="link-btn small" data-move="${esc(book.id)}" data-to="${esc(c.id)}">${esc(c.name)}へ</button>`).join('')}
-        <button class="link-btn small" data-hide="${esc(book.id)}">外す</button>
-      </span>
     </label>`;
+  };
+
+  // 行を長押ししたときのメニュー（兄弟に移す・候補から外す・読んだ本に登録）
+  const openMenu = id => {
+    if (root.querySelector('.sheet-back')) return;
+    const { book } = rows.get(id);
+    root.insertAdjacentHTML('beforeend', `<div class="sheet-back">
+      <div class="sheet" role="dialog" aria-label="${esc(book.title)}">
+        <b class="sheet-title">${esc(book.title)}</b>
+        ${ctx.children.filter(c => c.id !== current.child.id).map(c => `<button class="btn ghost" data-move="${esc(id)}" data-to="${esc(c.id)}">${esc(c.name)}に移す</button>`).join('')}
+        <button class="btn ghost" data-hide="${esc(id)}">候補から外す</button>
+        <div class="sheet-read">
+          <h4 class="sub-h">読んだ本に登録</h4>
+          <label class="field inline">読んだ日<input type="date" id="read-date" value="${today()}" max="${today()}"></label>
+          <div class="sheet-kids">
+            ${ctx.children.map(c => `<button class="btn sm" data-read="${esc(id)}" data-kid-ids="${esc(c.id)}">${esc(c.name)}</button>`).join('')}
+            ${ctx.children.length > 1 ? `<button class="btn sm" data-read="${esc(id)}" data-kid-ids="${esc(ctx.children.map(c => c.id).join(','))}">全員</button>` : ''}
+          </div>
+        </div>
+        <button class="link-btn" data-close>やめる</button>
+      </div>
+    </div>`);
   };
 
   // 予約候補から外した本。兄弟で同じ本は1行にまとめ、「戻す」で全員の候補に戻す
@@ -133,6 +151,7 @@ export default async function reserve(root, ctx) {
       </details>` : ''}
       <div class="kids">${kidChips(ctx.children, current.child.id)}</div>
       <section class="kid-sec">
+        ${rows.size ? '<p class="muted small">本を長押しすると、兄弟に移す・候補から外す・読んだ本に登録ができます。</p>' : ''}
         ${releases.length ? `<h4 class="sub-h">📣 新刊（最優先）</h4>${releases.map(row).join('')}` : ''}
         ${series.length ? `<h4 class="sub-h">シリーズの続き</h4>${series.map(row).join('')}` : ''}
         ${current.needVolume.length ? `<details class="reserved"><summary class="small">次の巻が未登録のシリーズ ${current.needVolume.length}件（最新巻まで読んだシリーズを含む）</summary>
@@ -178,7 +197,56 @@ export default async function reserve(root, ctx) {
     update();
   });
 
+  // 長押しの判定。指が動いたらスクロールなので取り消す。長押しのあとに届く click は、チェックやメニューに効かないよう捨てる
+  const PRESS_MS = 500;
+  let press = null;
+  let afterPress = false;
+  const cancelPress = () => { if (press) clearTimeout(press.timer); press = null; };
+  const pressed = id => { cancelPress(); afterPress = true; openMenu(id); };
+  root.addEventListener('pointerdown', e => {
+    afterPress = false;
+    const r = e.target.closest('[data-press]');
+    if (!r || e.button > 0) return;
+    press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => pressed(r.dataset.press), PRESS_MS) };
+  });
+  root.addEventListener('pointermove', e => {
+    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress();
+  });
+  root.addEventListener('pointerup', cancelPress);
+  root.addEventListener('pointercancel', cancelPress);
+  // パソコンの右クリックと、Android の長押し
+  root.addEventListener('contextmenu', e => {
+    const r = e.target.closest('[data-press]');
+    if (!r) return;
+    e.preventDefault();
+    pressed(r.dataset.press);
+  });
+  root.addEventListener('click', e => {
+    if (!afterPress) return;
+    afterPress = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   root.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]') || e.target.classList.contains('sheet-back')) {
+      root.querySelector('.sheet-back')?.remove();
+      return;
+    }
+    const read = e.target.closest('[data-read]');
+    if (read) {
+      const bookId = read.dataset.read;
+      const date = root.querySelector('#read-date').value || null;
+      for (const kidId of read.dataset.kidIds.split(',')) {
+        if ((await lib.loansOf(kidId, bookId)).some(l => l.borrowedAt === date)) continue;
+        await lib.addLoan(kidId, bookId, date);
+      }
+      checked.delete(bookId);
+      saveSelection();
+      toast('読んだ本に登録しました');
+      ctx.refresh();
+      return;
+    }
     const hide = e.target.closest('[data-hide]');
     if (hide) {
       e.preventDefault();   // 行全体がチェックボックスのラベルなので、チェックが切り替わらないようにする
