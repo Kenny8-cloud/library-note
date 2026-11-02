@@ -3,10 +3,12 @@
 import * as lib from '../library.js';
 import { esc, cover, formatDate, toast } from '../ui.js';
 import { buildHall, coverTexture, plainCover, spineColor, EYE, FLOOR_Y, STAIR_POS } from '../hall-scene.js';
+import { musicOn, setMusicOn, startMusic, stopMusic } from '../hall-music.js';
 
 const THREE_URL = 'https://unpkg.com/three@0.160.0/build/three.module.min.js';
 const NEAR = 2.6;          // これより遠い本を押したときは、まず本の前まで歩く
 const VIEW = 1.5;          // 本の前で立ち止まる距離
+const WALK_SPEED = 1.8;    // ▲▼ で歩く速さ（メートル毎秒）
 const FOV = 72, MIN_FOV = 22, MAX_FOV = 85;
 const HINT_KEY = 'hall-hint-seen';
 
@@ -53,9 +55,14 @@ export default async function hall(root, ctx) {
     <div class="hall-top">
       <button class="hall-btn" data-back="shelf">‹ 本棚へ</button>
       <span class="hall-count">${entries.length.toLocaleString()}冊の図書室</span>
+      <button class="hall-btn" id="music" aria-label="音楽">${musicOn() ? "♪ 音楽あり" : "♪ 音楽なし"}</button>
     </div>
     <button class="hall-btn hall-floor" id="floor" hidden>2階へ上がる</button>
-    <p class="hall-hint" id="hint" hidden>ドラッグで見回す ・ 床を押すと歩く ・ 本を押すと手に取る ・ ピンチで拡大</p>
+    <div class="hall-walk">
+      <button class="hall-btn" data-walk="1" aria-label="前へ進む">▲ 前へ</button>
+      <button class="hall-btn" data-walk="-1" aria-label="後ろへ下がる">▼ 後ろへ</button>
+    </div>
+    <p class="hall-hint" id="hint" hidden>ドラッグで見回す ・ 床を押すか ▲▼ を押し続けると歩く ・ 本を押すと手に取る ・ ピンチで拡大</p>
     <div class="hall-fade" id="fade"><p id="loading">図書室の扉を開いています…</p></div>
     <div class="hall-sheet" id="sheet" hidden></div>
   </div>`;
@@ -106,8 +113,17 @@ export default async function hall(root, ctx) {
       camera.rotation.set(pose.pitch, pose.yaw, 0);
       if (camera.fov !== pose.fov) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
     };
+    // ▲▼ を押している間、向いている方へ進む（walkDir: 1 が前、-1 が後ろ）
+    let walkDir = 0, walkAt = 0;
+    const walkStep = now => {
+      const dt = Math.min(0.05, (now - walkAt) / 1000);
+      walkAt = now;
+      const d = walkDir * WALK_SPEED * dt;
+      [pose.x, pose.z] = walkable(pose.x - Math.sin(pose.yaw) * d, pose.z - Math.cos(pose.yaw) * d, pose.level);
+    };
     const frame = now => {
       raf = 0;
+      if (walkDir) walkStep(now);
       anims = anims.filter(a => {
         const t = Math.min(1, (now - a.start) / a.ms);
         a.step(ease(Math.max(0, t)));
@@ -116,7 +132,7 @@ export default async function hall(root, ctx) {
       });
       place();
       renderer.render(scene, camera);
-      if (anims.length) wake();
+      if (anims.length || walkDir) wake();
     };
     const wake = () => { if (!raf && !dead) raf = requestAnimationFrame(frame); };
     const tween = (ms, step, done) => {
@@ -346,7 +362,35 @@ export default async function hall(root, ctx) {
       root.querySelector('#loading').hidden = false;
     });
 
+    // 音楽。自動で鳴らせなかった端末では、最初に画面に触れたときに始める
+    const music = root.querySelector('#music');
+    const firstTouch = () => { if (musicOn()) startMusic(); };
+    root.addEventListener('pointerdown', firstTouch, { once: true, capture: true });
+    music.addEventListener('click', () => {
+      const on = !musicOn();
+      setMusicOn(on);
+      music.textContent = on ? '♪ 音楽あり' : '♪ 音楽なし';
+      if (on) startMusic(); else stopMusic();
+    });
+    if (musicOn()) startMusic();
+
     floorBtn.addEventListener('click', toggleFloor);
+    for (const b of root.querySelectorAll('[data-walk]')) {
+      const stop = () => { walkDir = 0; };
+      b.addEventListener('pointerdown', e => {
+        if (held) return;
+        b.setPointerCapture?.(e.pointerId);
+        root.querySelector('#hint').hidden = true;
+        anims = [];
+        walkDir = Number(b.dataset.walk);
+        walkAt = performance.now();
+        wake();
+      });
+      b.addEventListener('pointerup', stop);
+      b.addEventListener('pointercancel', stop);
+      b.addEventListener('lostpointercapture', stop);
+      b.addEventListener('contextmenu', e => e.preventDefault());
+    }
     sheet.addEventListener('click', e => {
       if (e.target.closest('[data-putback]')) putBack();
       const open = e.target.closest('[data-open]');
@@ -385,6 +429,7 @@ export default async function hall(root, ctx) {
 
     dispose = () => {
       saved = { ...pose };
+      stopMusic();
       cancelAnimationFrame(raf);
       observer.disconnect();
       window.removeEventListener('resize', resize);

@@ -2,6 +2,7 @@
 import * as lib from '../library.js';
 import { esc, cover } from '../ui.js';
 import { topKids, tabs } from '../app.js';
+import { unlockMusic } from '../hall-music.js';
 
 function monthLabel(iso) {
   if (!iso) return '日付なし';
@@ -128,6 +129,8 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
     ${tabs('shelf')}`;
 
   if (isSeries) return;
+  // 入館の音楽を鳴らせるよう、押した瞬間に音の準備をする
+  root.querySelector('.hall-enter').addEventListener('click', unlockMusic);
   const q = root.querySelector('#q');
   const draw = () => {
     // 「本が未特定」は、ISBN がなく書名だけで登録され、まだ確かめていない本（lib.isUnidentified）

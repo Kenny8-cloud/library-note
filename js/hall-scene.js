@@ -657,7 +657,8 @@ export function buildHall(T, entries) {
   // 最近借りた本は、奥の壁の中央に表紙を見せて飾る
   const displayU = -UNIT;
   const F = WALLS[0].F;
-  plane(F, 0, CASE_H - 0.34, 0.34, 1.05, 0.2, keep(texture(T, plateCanvas('最近借りた本', 420, 80))));
+  // 2本の本棚の境の仕切りに隠れないよう、仕切りより手前に出す
+  plane(F, 0, CASE_H - 0.34, D + 0.03, 1.05, 0.2, keep(texture(T, plateCanvas('最近借りた本', 420, 80))));
   const display = [];
   latest.forEach((e, i) => {
     const col = i % 4, row = Math.floor(i / 4);
