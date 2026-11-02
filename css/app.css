@@ -492,3 +492,46 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 .sheet-read { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .sheet-kids { display: flex; gap: 8px; flex-wrap: wrap; }
 .sheet-kids .btn { flex: 1; }
+
+/* 3Dの図書室 */
+.hall-enter {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; text-decoration: none;
+  color: #f4e6c4; background: linear-gradient(135deg, #4a2c17, #2a170b); border: 1px solid #a57a35;
+  font-family: var(--serif); letter-spacing: .12em; box-shadow: 0 2px 6px rgba(40, 25, 10, .25);
+}
+.hall-enter span { font-size: 20px; }
+.hall-enter b { flex: 1; font-weight: 600; font-size: 15px; }
+.hall-enter i { font-style: normal; color: #d9ae55; }
+.hall { position: fixed; inset: 0; z-index: 40; background: #140b05; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+.hall-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hall-top {
+  position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: calc(env(safe-area-inset-top) + 10px) 12px 10px; pointer-events: none;
+}
+.hall-btn {
+  pointer-events: auto; border: 1px solid rgba(217, 174, 85, .7); background: rgba(30, 16, 8, .72); color: #f4e6c4;
+  border-radius: 999px; padding: 8px 14px; font-size: 14px; font-family: var(--serif);
+}
+.hall-count { color: #f4e6c4; font-family: var(--serif); font-size: 13px; letter-spacing: .08em; text-shadow: 0 1px 3px #000; }
+.hall-floor { position: absolute; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 14px); }
+.hall-hint {
+  position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 64px); margin: 0; padding: 8px 12px; border-radius: 8px;
+  background: rgba(30, 16, 8, .72); color: #f4e6c4; font-size: 12px; line-height: 1.6; text-align: center; pointer-events: none;
+}
+.hall-fade {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: #0d0704;
+  color: #f4e6c4; font-family: var(--serif); letter-spacing: .1em; text-align: center; line-height: 1.8; pointer-events: none;
+  transition: opacity .25s;
+}
+.hall-fade.open { opacity: 0; transition: opacity 1.2s; }
+.hall-fade.open.on { opacity: 1; transition: opacity .25s; }
+.hall-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 14px calc(env(safe-area-inset-bottom) + 12px);
+  background: var(--paper); color: var(--ink); border-radius: 14px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+  max-width: 560px; margin: 0 auto;
+}
+.hall-sheet[hidden], .hall-btn[hidden], .hall-hint[hidden] { display: none; }
+.hall-card { display: flex; gap: 12px; align-items: flex-start; }
+.hall-card .t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.hall-card-btns { display: flex; gap: 8px; }
+.hall-card-btns .btn { flex: 1; }

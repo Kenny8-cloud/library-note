@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '3.28（2026-11-02）';
+export const APP_VERSION = '3.29（2026-11-02）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -64,6 +64,12 @@ window.__coverFail = img => {
     img.remove();
   }
 };
+
+// 表紙の画像の候補を順に返す（図書室の3D表示で使う）
+export function coverSources(book, small) {
+  if (book.coverData) return [book.coverData];
+  return [amazonCover(book.isbn, small), book.coverUrl].filter(Boolean);
+}
 
 // size: '' / 'md' / 'lg'、または 'xs'（縮小した本棚。小さい画像を使う）
 export function cover(book, size = '') {

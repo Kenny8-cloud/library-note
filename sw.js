@@ -1,7 +1,7 @@
 // オフラインでも起動できるよう、アプリのファイルをキャッシュする。
 // 通信できるときは常にネットワークの最新版を使い、つながらないときだけキャッシュを使う。
 // ファイルを追加したら FILES に加え、VERSION を上げる。
-const VERSION = 'v43';
+const VERSION = 'v44';
 const CACHE = `library-log-${VERSION}`;
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
@@ -9,9 +9,10 @@ const FILES = [
   './js/views/setup.js', './js/views/child-form.js', './js/views/home.js', './js/views/shelf.js', './js/views/scan.js',
   './js/views/register.js', './js/views/search.js', './js/views/book.js', './js/views/reserve.js', './js/views/settings.js', './js/views/import.js',
   './js/views/series.js', './js/views/series-new.js', './js/views/wishlist.js', './js/views/reserve-confirm.js',
-  './js/views/receipt.js', './js/ocr.js', './js/releases.js', './js/suggestions.js', './js/views/review.js', './js/views/identify.js',
+  './js/views/receipt.js', './js/ocr.js', './js/releases.js', './js/suggestions.js', './js/views/review.js', './js/views/identify.js', './js/views/hall.js', './js/hall-scene.js',
   './icons/icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
   'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js',
+  'https://unpkg.com/three@0.160.0/build/three.module.min.js',
 ];
 
 self.addEventListener('install', e => {
@@ -62,7 +63,7 @@ self.addEventListener('fetch', e => {
     e.respondWith(coverFromCache(e.request).catch(() => fetch(e.request)));
     return;
   }
-  const isAppFile = url.origin === location.origin || url.href.startsWith('https://unpkg.com/@zxing/');
+  const isAppFile = url.origin === location.origin || url.href.startsWith('https://unpkg.com/@zxing/') || url.href.startsWith('https://unpkg.com/three@');
   if (!isAppFile) return;
   e.respondWith(fetch(e.request, { cache: 'no-cache' })
     .then(res => {

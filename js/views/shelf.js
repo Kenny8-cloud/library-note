@@ -110,6 +110,7 @@ export default async function shelf(root, ctx, [tab, filter = 'reading']) {
         <a href="#/shelf/series" class="${isSeries ? 'on' : ''}">シリーズ</a>
       </div>
       ${isSeries ? await seriesHtml(ctx.childId, filter) : `
+        <a class="hall-enter" href="#/hall"><span>🏛</span><b>図書室へ入館</b><i>›</i></a>
         <input class="input" type="search" id="q" placeholder="🔍 書名・作者・シリーズ名で検索" autocomplete="off" value="${esc(state.q)}">
         <div class="chips" id="who">
           <button class="chip ${state.who ? '' : 'on'}" data-who="">全員</button>
