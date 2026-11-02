@@ -11,9 +11,9 @@ const EDGE_X = 3.05, EDGE_Z = 6.55;        // 2階の回廊の内側の端
 const COLUMN_Z = [-6, -3.6, -1.2, 1.2, 3.6, 6];
 const STAIR = { x: 2.15, z: -4.8, r: 0.85 };
 const SKY = { x: 1.6, z: 3.2 };            // 天窓の大きさの半分
-const CELL_W = 32, CELL_H = 204, ATLAS = 2048;
-const PER_ATLAS = Math.floor(ATLAS / CELL_W) * Math.floor(ATLAS / CELL_H) - 1;   // 最初の1マスは本の小口の色に使う
-const BOOK_QUADS = 5;
+const ATLAS = 2048, COLS = 28, CELL_ROWS = 20;   // 表紙を並べる画像の大きさとマスの数
+const CW = ATLAS / COLS, CH = ATLAS / CELL_ROWS;
+const PER_ATLAS = COLS * CELL_ROWS - 1;   // 最初の1マスは本の小口の色に使う
 
 export const EYE = 1.5;
 export const FLOOR_Y = [0, GY];
@@ -285,68 +285,79 @@ function plateCanvas(text, w = 256, h = 80) {
   });
 }
 
-// ---- 背表紙 ----
+// ---- 本の色と表紙 ----
 const SPINES = ['#7d1f22', '#1f3a6e', '#1f5b45', '#b5862a', '#6a2f6e', '#21706f', '#a8502a', '#34345c', '#d8cba6', '#8c2f4f', '#3f6f2f', '#d0a14a'];
 const lightColor = c => ['#d8cba6', '#d0a14a', '#b5862a'].includes(c);
-const ROTATED = /[ー－―〜~…・（）()「」『』【】\-:：、。]/;
 
 export function spineColor(book) { return SPINES[hash(book.title) % SPINES.length]; }
 
-function drawSpine(x, ox, oy, entry) {
+// 表紙の画像が届くまでの無地の表紙
+function drawPlain(x, ox, oy, w, h, entry) {
   const color = spineColor(entry.book);
   x.fillStyle = color;
-  x.fillRect(ox, oy, CELL_W, CELL_H);
-  const ink = lightColor(color) ? '#3a2410' : '#f1e3bd';
-  x.fillStyle = lightColor(color) ? '#5c431a' : '#c9a558';
-  x.fillRect(ox, oy + 7, CELL_W, 2);
-  x.fillRect(ox, oy + 11, CELL_W, 1);
-  x.fillStyle = ink;
-  [...String(entry.book.title).normalize('NFKC').replace(/\s/g, '')].slice(0, 8).forEach((ch, i) => {
-    const y = oy + 28 + i * 20;
-    if (ROTATED.test(ch)) {
-      x.save();
-      x.translate(ox + CELL_W / 2, y);
-      x.rotate(Math.PI / 2);
-      x.fillText(ch, 0, 0);
-      x.restore();
-    } else {
-      x.fillText(ch, ox + CELL_W / 2, y);
-    }
-  });
-  // 図書館のシールのように、誰が借りたかを子供の色で示す
+  x.fillRect(ox, oy, w, h);
+  x.strokeStyle = lightColor(color) ? '#5c431a' : '#c9a558';
+  x.strokeRect(ox + 4, oy + 4, w - 8, h - 8);
+  x.fillStyle = lightColor(color) ? '#3a2410' : '#f1e3bd';
+  const chars = [...String(entry.book.title).normalize('NFKC').replace(/\s/g, '')];
+  for (let i = 0; i < 5 && i * 5 < chars.length; i++) x.fillText(chars.slice(i * 5, (i + 1) * 5).join(''), ox + w / 2, oy + 18 + i * 14);
+}
+
+// 図書館のシールのように、誰が借りたかを子供の色で示す
+function drawKids(x, ox, oy, w, h, entry) {
   const kids = entry.kids.length ? entry.kids : [{ color: '#ddd' }];
   kids.forEach((k, i) => {
     x.fillStyle = k.color;
-    x.fillRect(ox + i * CELL_W / kids.length, oy + CELL_H - 18, CELL_W / kids.length, 12);
+    x.fillRect(ox + i * w / kids.length, oy + h - 7, w / kids.length, 5);
   });
 }
 
-function spineAtlases(T, entries) {
-  const cols = Math.floor(ATLAS / CELL_W), rows = Math.floor(ATLAS / CELL_H);
+const cellRect = (cx, cy) => {
+  const ox = Math.ceil(cx * CW), oy = Math.ceil(cy * CH);
+  return [ox, oy, Math.floor((cx + 1) * CW) - ox, Math.floor((cy + 1) * CH) - oy];
+};
+
+// 全部の本の表紙を数枚の大きな画像にまとめる。本ごとに画像を持つより、スマホの描画がずっと軽くなる
+function coverAtlases(T, entries) {
   const atlases = [];
   for (let s = 0; s < entries.length; s += PER_ATLAS) {
     const part = entries.slice(s, s + PER_ATLAS);
+    let ctx;
     const c = canvas(ATLAS, ATLAS, x => {
+      ctx = x;
       x.fillStyle = '#e8dcc0';
-      x.fillRect(0, 0, CELL_W, CELL_H);
-      x.font = '600 19px "Hiragino Mincho ProN","Yu Mincho",serif';
+      x.fillRect(0, 0, CW, CH);
+      x.font = '600 12px "Hiragino Mincho ProN","Yu Mincho",serif';
       x.textAlign = 'center';
       x.textBaseline = 'middle';
+      x.lineWidth = 1;
       part.forEach((e, i) => {
-        const n = i + 1, cx = n % cols, cy = Math.floor(n / cols);
-        drawSpine(x, cx * CELL_W, cy * CELL_H, e);
+        const n = i + 1, cx = n % COLS, cy = Math.floor(n / COLS);
+        const rect = cellRect(cx, cy);
+        drawPlain(x, ...rect, e);
+        drawKids(x, ...rect, e);
         e.atlas = atlases.length;
-        e.cell = cellOf(cx, cy, cols, rows, ATLAS);
+        e.rect = rect;
+        e.cell = cellOf(cx, cy, COLS, CELL_ROWS, ATLAS);
       });
     });
-    atlases.push(texture(T, c, false, 8));
+    atlases.push({ tex: texture(T, c, false, 8), ctx });
   }
   return atlases;
 }
-// 背表紙の1マスの座標。sv は帯より上の無地の部分で、本の側面の色に使う
+
+// 届いた表紙の画像を、大きな画像の自分のマスに描く
+export function paintCover(atlases, entry, img) {
+  const { ctx } = atlases[entry.atlas];
+  ctx.drawImage(img, ...entry.rect);
+  drawKids(ctx, ...entry.rect, entry);
+}
+
+// 画像の中の1マスの座標。sv はマスの上端で、本の側面の色に使う
 function cellOf(cx, cy, cols, rows, size) {
   const w = 1 / cols, h = (size / rows) / size;
-  return { u0: cx * w, u1: (cx + 1) * w, v0: 1 - (cy + 1) * h, v1: 1 - cy * h, su: (cx + 0.5) * w, sv: 1 - cy * h - 3 / size, pu: 0.5 * w, pv: 1 - 0.5 * h };
+  const e = 1.5 / size;   // となりのマスの色がにじまないよう、少し内側を使う
+  return { u0: cx * w + e, u1: (cx + 1) * w - e, v0: 1 - (cy + 1) * h + e, v1: 1 - cy * h - e, su: (cx + 0.5) * w, sv: 1 - cy * h - 3 / size, pu: 0.5 * w, pv: 1 - 0.5 * h };
 }
 
 function decorAtlas(T) {
@@ -522,7 +533,7 @@ function bookcase(g, gold, F, u0, y0, shelves = true) {
 }
 
 // ---- 全体 ----
-// entries: { book, year, kids, borrowedAt } を新しい順に。本は年ごとに棚を分け、奥の壁から右回りに並べる
+// entries: { book, year, kids, borrowedAt } を新しい順に。本は表紙を見せて年ごとに棚を分け、奥の壁から右回りに並べる
 export function buildHall(T, entries) {
   const scene = new T.Scene();
   scene.background = new T.Color(0x140b05);
@@ -533,8 +544,9 @@ export function buildHall(T, entries) {
 
   const g = new Geo(), ceil = new Geo(), iron = new Geo(), floorG = new Geo(), gold = new Geo(), decor = new Geo();
   const latest = entries.slice(0, 12);
-  const atlases = spineAtlases(T, entries).map(keep);
-  const spineGeo = atlases.map(() => new Geo());
+  const atlases = coverAtlases(T, entries);
+  atlases.forEach(a => keep(a.tex));
+  const coverGeo = atlases.map(() => new Geo());
   const placed = atlases.map(() => []);
   const decorTex = decorAtlas(T);
   keep(decorTex.tex);
@@ -563,6 +575,11 @@ export function buildHall(T, entries) {
   for (const y0 of [0, GY]) for (let w = 0; w < 4; w++) units.push(...unitsOf(w, y0));
   const isDisplay = c => c.y0 === 0 && c.wall === 0 && (c.index === 2 || c.index === 3);
 
+  // 棚に入りきるよう、本が増えたら1段の冊数を増やす（本棚1本は7段）。年の変わり目で棚が余る分も見込む
+  const shelfUnits = units.filter(c => !isDisplay(c)).length;
+  const perRow = Math.max(5, Math.ceil(entries.length * 1.15 / (shelfUnits * ROWS)));
+  const bookW = (UNIT - 0.09) / perRow - 0.015, bookH = Math.min(bookW * 1.38, ROW - 0.06);
+
   let next = 0;
   const makePlate = new Map();
   for (const c of units) {
@@ -574,28 +591,26 @@ export function buildHall(T, entries) {
       const base = c.y0 + BASE + r * ROW + 0.015;
       let u = c.u0 + 0.045;
       const end = c.u0 + UNIT - 0.045;
+      // 借りた本は表紙を手前に向けて並べる
+      for (let i = 0; i < perRow && next < entries.length && entries[next].year === year; i++, next++) {
+        const e = entries[next], geo = coverGeo[e.atlas];
+        const top = base + bookH, front = D - 0.02 - rnd() * 0.008;
+        placed[e.atlas].push(e);
+        e.start = geo.n;
+        putBook(geo, c.F, u, u + bookW, base, top, front - 0.025, front, e.cell, 1.12, true);
+        e.center = world(c.F, u + bookW / 2, (base + top) / 2, front);
+        e.normal = [c.F.nx, 0, c.F.nz];
+        e.level = c.y0 ? 1 : 0;
+        u += bookW + 0.015;
+      }
+      // 残りの場所は、背表紙の飾りの本で埋める
       for (;;) {
         const t = 0.044 + rnd() * 0.02;
         if (u + t > end) break;
         const top = base + ROW - 0.08 - rnd() * 0.09, front = D - 0.015 - rnd() * 0.025;
-        const e = next < entries.length && entries[next].year === year ? entries[next] : null;
-        if (e) {
-          next++;
-          const geo = spineGeo[e.atlas];
-          const index = placed[e.atlas].length;
-          placed[e.atlas].push(e);
-          e.start = geo.n;
-          e.index = index;
-          putBook(geo, c.F, u, u + t, base, top, front - 0.17, front, e.cell, 1.25, true);
-          e.center = world(c.F, u + t / 2, (base + top) / 2, front);
-          e.height = top - base;
-          e.normal = [c.F.nx, 0, c.F.nz];
-          e.level = c.y0 ? 1 : 0;
-        } else {
-          putBook(decor, c.F, u, u + t, base, top, front - 0.14, front, decorTex.cells[Math.floor(rnd() * decorTex.cells.length)], 0.72, false);
-        }
+        putBook(decor, c.F, u, u + t, base, top, front - 0.14, front, decorTex.cells[Math.floor(rnd() * decorTex.cells.length)], 0.72, false);
         u += t + 0.0015;
-        if (!e && rnd() < 0.015) u += 0.03 + rnd() * 0.05;
+        if (rnd() < 0.015) u += 0.03 + rnd() * 0.05;
       }
     }
   }
@@ -610,7 +625,7 @@ export function buildHall(T, entries) {
     iron.mesh(T, new T.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, side: T.DoubleSide }), { kind: 'stair' }),
     floorG.mesh(T, basic(keep(texture(T, floorCanvas(), true))), { kind: 'floor' }),
     decor.mesh(T, basic(decorTex.tex), { kind: 'decor' }),
-    ...spineGeo.map((geo, i) => geo.mesh(T, basic(atlases[i]), { kind: 'book', entries: placed[i] })),
+    ...coverGeo.map((geo, i) => geo.mesh(T, basic(atlases[i].tex), { kind: 'book', entries: placed[i] })),
   ];
   for (const m of meshes) scene.add(m);
   const pickable = [...meshes];
@@ -675,7 +690,7 @@ export function buildHall(T, entries) {
     scene.add(shelf);
   }
 
-  return { scene, pickable, display, textures, placedBooks: next };
+  return { scene, pickable, display, textures, atlases };
 }
 
 // 表紙の画像が取れないときの代わり（題名を書いた無地の表紙）
@@ -696,7 +711,7 @@ export function plainCover(book) {
 }
 
 // 表紙の画像を読み込む。絵として使えるのは、読み込み元が許可している画像だけ
-export function coverTexture(T, book, small) {
+export async function loadCoverImage(book, small) {
   const load = src => new Promise((ok, no) => {
     const img = new Image();
     if (!src.startsWith('data:')) img.crossOrigin = 'anonymous';
@@ -704,16 +719,17 @@ export function coverTexture(T, book, small) {
     img.onerror = () => no();
     img.src = src;
   });
-  return (async () => {
-    for (const src of coverSources(book, small)) {
-      try {
-        const img = await load(src);
-        const t = new T.Texture(img);
-        t.colorSpace = T.SRGBColorSpace;
-        t.needsUpdate = true;
-        return t;
-      } catch { /* 次の候補へ */ }
-    }
-    return null;
-  })();
+  for (const src of coverSources(book, small)) {
+    try { return await load(src); } catch { /* 次の候補へ */ }
+  }
+  return null;
+}
+
+export async function coverTexture(T, book, small) {
+  const img = await loadCoverImage(book, small);
+  if (!img) return null;
+  const t = new T.Texture(img);
+  t.colorSpace = T.SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
 }

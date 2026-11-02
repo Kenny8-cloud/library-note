@@ -1,8 +1,8 @@
-// 3Dの図書室。家族が借りた本を年ごとに棚に並べる。ドラッグで見回し、床を押すと歩き、本を押すと手に取れる。
+// 3Dの図書室。家族が借りた本を、表紙が見えるように年ごとに棚に並べる。ドラッグで見回し、床を押すと歩き、本を押すと手に取れる。
 // three.js は容量が大きいので、この画面に入るときに読み込む
 import * as lib from '../library.js';
 import { esc, cover, formatDate, toast } from '../ui.js';
-import { buildHall, coverTexture, plainCover, spineColor, EYE, FLOOR_Y, STAIR_POS } from '../hall-scene.js';
+import { buildHall, coverTexture, loadCoverImage, paintCover, plainCover, spineColor, EYE, FLOOR_Y, STAIR_POS } from '../hall-scene.js';
 import { musicOn, setMusicOn, startMusic, stopMusic } from '../hall-music.js';
 
 const THREE_URL = 'https://unpkg.com/three@0.160.0/build/three.module.min.js';
@@ -97,7 +97,7 @@ export default async function hall(root, ctx) {
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
-    const { scene, pickable, display, textures } = buildHall(T, entries);
+    const { scene, pickable, display, textures, atlases } = buildHall(T, entries);
     const camera = new T.PerspectiveCamera(FOV, 1, 0.05, 60);
     camera.rotation.order = 'YXZ';
 
@@ -116,7 +116,7 @@ export default async function hall(root, ctx) {
     // ▲▼ を押している間、向いている方へ進む（walkDir: 1 が前、-1 が後ろ）
     let walkDir = 0, walkAt = 0;
     const walkStep = now => {
-      const dt = Math.min(0.05, (now - walkAt) / 1000);
+      const dt = Math.min(0.25, (now - walkAt) / 1000);
       walkAt = now;
       const d = walkDir * WALK_SPEED * dt;
       [pose.x, pose.z] = walkable(pose.x - Math.sin(pose.yaw) * d, pose.z - Math.cos(pose.yaw) * d, pose.level);
@@ -226,12 +226,10 @@ export default async function hall(root, ctx) {
       const front = new T.MeshBasicMaterial({ map: plain, fog: false });
       const mats = [paper, edge, paper, paper, front, edge];
       const mesh = new T.Mesh(new T.BoxGeometry(0.21, 0.29, 0.03), mats);
-      const center = new T.Vector3(...(displayMesh ? displayMesh.position.toArray() : e.center));
-      const n = new T.Vector3(...(displayMesh ? [0, 0, 1] : e.normal));
-      const homeQ = new T.Quaternion();
-      if (displayMesh) homeQ.copy(displayMesh.quaternion);
-      else homeQ.setFromRotationMatrix(new T.Matrix4().makeBasis(n.clone().negate(), new T.Vector3(0, 1, 0), new T.Vector3().crossVectors(n.clone().negate(), new T.Vector3(0, 1, 0))));
-      const home = displayMesh ? center.clone() : center.clone().sub(n.clone().multiplyScalar(0.105));
+      const home = new T.Vector3(...(displayMesh ? displayMesh.position.toArray() : e.center));
+      // 棚の本も表紙を手前に向けているので、そのままの向きで引き出す
+      const homeQ = displayMesh ? displayMesh.quaternion.clone()
+        : new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), Math.atan2(e.normal[0], e.normal[2]));
       mesh.position.copy(home);
       mesh.quaternion.copy(homeQ);
       scene.add(mesh);
@@ -298,7 +296,7 @@ export default async function hall(root, ctx) {
       } else if (kind === 'stair') {
         toggleFloor();
       } else if (kind === 'decor') {
-        if (hit.distance <= NEAR) toast('これは飾りの本です。明るい背表紙が、借りた本です');
+        if (hit.distance <= NEAR) toast('これは飾りの本です。表紙が見えている本が、借りた本です');
         else {
           const n = hit.face.normal;
           standBefore(hit.point.toArray(), [n.x, 0, n.z], hit.point.y > FLOOR_Y[1] ? 1 : 0);
@@ -411,6 +409,34 @@ export default async function hall(root, ctx) {
       }
     })();
 
+    // 棚の全部の本の表紙を、いま立っている場所に近い本から読み込む
+    const queue = entries.filter(e => e.center);
+    const dirty = new Set();
+    const takeNearest = () => {
+      let best = 0, bestD = Infinity;
+      queue.forEach((e, i) => {
+        const d = Math.hypot(e.center[0] - pose.x, e.center[1] - pose.y, e.center[2] - pose.z);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      return queue.splice(best, 1)[0];
+    };
+    const coverWorker = async () => {
+      while (queue.length && !dead) {
+        const e = takeNearest();
+        const img = await loadCoverImage(e.book, true);
+        if (dead) return;
+        if (img) { paintCover(atlases, e, img); dirty.add(e.atlas); }
+      }
+    };
+    for (let i = 0; i < 6; i++) coverWorker();
+    // 大きな画像の更新は重いので、まとめて、止まっているときに行う
+    const coverTimer = setInterval(() => {
+      if (!dirty.size || walkDir || anims.length) return;
+      for (const i of dirty) atlases[i].tex.needsUpdate = true;
+      dirty.clear();
+      wake();
+    }, 1000);
+
     // ---- 入館 ----
     updateFloorBtn();
     place();
@@ -430,6 +456,7 @@ export default async function hall(root, ctx) {
     dispose = () => {
       saved = { ...pose };
       stopMusic();
+      clearInterval(coverTimer);
       cancelAnimationFrame(raf);
       observer.disconnect();
       window.removeEventListener('resize', resize);
