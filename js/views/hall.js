@@ -8,7 +8,7 @@ import { musicOn, setMusicOn, startMusic, stopMusic } from '../hall-music.js';
 const THREE_URL = 'https://unpkg.com/three@0.160.0/build/three.module.min.js';
 const NEAR = 2.6;          // これより遠い本を押したときは、まず本の前まで歩く
 const VIEW = 1.5;          // 本の前で立ち止まる距離
-const WALK_SPEED = 1.8;    // ▲▼ で歩く速さ（メートル毎秒）
+const WALK_SPEED = 1.8;    // ▲▼◀▶ で歩く速さ（メートル毎秒）
 const FOV = 72, MIN_FOV = 22, MAX_FOV = 85;
 const HINT_KEY = 'hall-hint-seen';
 
@@ -59,10 +59,12 @@ export default async function hall(root, ctx) {
     </div>
     <button class="hall-btn hall-floor" id="floor" hidden>2階へ上がる</button>
     <div class="hall-walk">
-      <button class="hall-btn" data-walk="1" aria-label="前へ進む">▲ 前へ</button>
-      <button class="hall-btn" data-walk="-1" aria-label="後ろへ下がる">▼ 後ろへ</button>
+      <button class="hall-btn" data-walk="1,0" aria-label="前へ進む">▲</button>
+      <button class="hall-btn" data-walk="0,-1" aria-label="左へ移動">◀</button>
+      <button class="hall-btn" data-walk="-1,0" aria-label="後ろへ下がる">▼</button>
+      <button class="hall-btn" data-walk="0,1" aria-label="右へ移動">▶</button>
     </div>
-    <p class="hall-hint" id="hint" hidden>ドラッグで見回す ・ 床を押すか ▲▼ を押し続けると歩く ・ 本を押すと手に取る ・ ピンチで拡大</p>
+    <p class="hall-hint" id="hint" hidden>ドラッグで見回す ・ 床を押すか ▲▼◀▶ を押し続けると歩く ・ 本を押すと手に取る ・ ピンチで拡大</p>
     <div class="hall-fade" id="fade"><p id="loading">図書室の扉を開いています…</p></div>
     <div class="hall-sheet" id="sheet" hidden></div>
   </div>`;
@@ -113,13 +115,14 @@ export default async function hall(root, ctx) {
       camera.rotation.set(pose.pitch, pose.yaw, 0);
       if (camera.fov !== pose.fov) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
     };
-    // ▲▼ を押している間、向いている方へ進む（walkDir: 1 が前、-1 が後ろ）
-    let walkDir = 0, walkAt = 0;
+    // ▲▼◀▶ を押している間、向いている方を基準に進む（walkDir: [前後, 左右]。前と右がプラス）
+    let walkDir = null, walkAt = 0;
     const walkStep = now => {
       const dt = Math.min(0.25, (now - walkAt) / 1000);
       walkAt = now;
-      const d = walkDir * WALK_SPEED * dt;
-      [pose.x, pose.z] = walkable(pose.x - Math.sin(pose.yaw) * d, pose.z - Math.cos(pose.yaw) * d, pose.level);
+      const f = walkDir[0] * WALK_SPEED * dt, s = walkDir[1] * WALK_SPEED * dt;
+      const sin = Math.sin(pose.yaw), cos = Math.cos(pose.yaw);
+      [pose.x, pose.z] = walkable(pose.x - sin * f + cos * s, pose.z - cos * f - sin * s, pose.level);
     };
     const frame = now => {
       raf = 0;
@@ -374,13 +377,13 @@ export default async function hall(root, ctx) {
 
     floorBtn.addEventListener('click', toggleFloor);
     for (const b of root.querySelectorAll('[data-walk]')) {
-      const stop = () => { walkDir = 0; };
+      const stop = () => { walkDir = null; };
       b.addEventListener('pointerdown', e => {
         if (held) return;
         b.setPointerCapture?.(e.pointerId);
         root.querySelector('#hint').hidden = true;
         anims = [];
-        walkDir = Number(b.dataset.walk);
+        walkDir = b.dataset.walk.split(',').map(Number);
         walkAt = performance.now();
         wake();
       });

@@ -516,7 +516,7 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 .hall-count { color: #f4e6c4; font-family: var(--serif); font-size: 13px; letter-spacing: .08em; text-shadow: 0 1px 3px #000; }
 .hall-floor { position: absolute; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 14px); }
 .hall-hint {
-  position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 64px); margin: 0; padding: 8px 12px; border-radius: 8px;
+  position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 122px); margin: 0; padding: 8px 12px; border-radius: 8px;
   background: rgba(30, 16, 8, .72); color: #f4e6c4; font-size: 12px; line-height: 1.6; text-align: center; pointer-events: none;
 }
 .hall-fade {
@@ -536,5 +536,9 @@ textarea.input { width: 100%; font-size: 15px; margin: 8px 0; }
 .hall-card .t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .hall-card-btns { display: flex; gap: 8px; }
 .hall-card-btns .btn { flex: 1; }
-.hall-walk { position: absolute; left: 12px; bottom: calc(env(safe-area-inset-bottom) + 14px); display: flex; gap: 8px; }
-.hall-walk .hall-btn { -webkit-touch-callout: none; touch-action: none; }
+.hall-walk { position: absolute; left: 12px; bottom: calc(env(safe-area-inset-bottom) + 14px); display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(2, 46px); gap: 4px; }
+.hall-walk .hall-btn { -webkit-touch-callout: none; touch-action: none; padding: 0; font-size: 16px; border-radius: 12px; }
+.hall-walk [data-walk="1,0"] { grid-column: 2; grid-row: 1; }
+.hall-walk [data-walk="0,-1"] { grid-column: 1; grid-row: 2; }
+.hall-walk [data-walk="-1,0"] { grid-column: 2; grid-row: 2; }
+.hall-walk [data-walk="0,1"] { grid-column: 3; grid-row: 2; }
