@@ -380,6 +380,21 @@ export async function showCandidates(items) {
   await db.setSetting('reserveHidden', (await db.getSetting('reserveHidden', [])).filter(k => !drop.has(k)));
 }
 
+// ホームの「最近借りた本」から隠す。隠すのは表示だけで、貸出の記録や本棚はそのまま。keys は「本のID|借りた日」
+export const recentKey = l => `${l.bookId}|${l.borrowedAt || ''}`;
+
+export async function recentHidden() {
+  return new Set(await db.getSetting('recentHidden', []));
+}
+
+export async function hideRecent(key) {
+  await db.setSetting('recentHidden', [...await recentHidden(), key]);
+}
+
+export async function showRecent(keys) {
+  await db.setSetting('recentHidden', [...await recentHidden()].filter(k => !keys.includes(k)));
+}
+
 // 予約候補を別の子へ移す。items は同じ本の候補（兄弟の分も含む）。借りたい本は移した先に付け替える。
 // シリーズの次の巻は計算で出てくるので、元の子では外した扱いにして、移した先の借りたい本に入れる
 export async function moveCandidate(items, toChildId) {

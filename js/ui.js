@@ -1,7 +1,7 @@
 // 画面描画の小さな道具。テンプレート文字列に埋め込む値は必ず esc を通す。
 
 // 設定画面に表示する版。公開するたびに更新する（スマホが最新版か確かめるため）
-export const APP_VERSION = '3.27（2026-11-02）';
+export const APP_VERSION = '3.28（2026-11-02）';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -87,6 +87,40 @@ export function kidChips(children, currentId) {
   return children.map(c => `
     <button class="kid ${c.id === currentId ? 'on' : ''}" data-kid="${esc(c.id)}"
       style="--kid:${esc(c.color)}">${esc(c.name)}</button>`).join('');
+}
+
+// data-press の付いた要素の長押しで onPress(その値) を呼ぶ。指が動いたらスクロールなので取り消す。
+// 長押しのあとに届く click は、チェックやリンクやメニューに効かないよう捨てる
+const PRESS_MS = 500;
+export function longPress(root, onPress) {
+  let press = null;
+  let afterPress = false;
+  const cancelPress = () => { if (press) clearTimeout(press.timer); press = null; };
+  const pressed = id => { cancelPress(); afterPress = true; onPress(id); };
+  root.addEventListener('pointerdown', e => {
+    afterPress = false;
+    const r = e.target.closest('[data-press]');
+    if (!r || e.button > 0) return;
+    press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => pressed(r.dataset.press), PRESS_MS) };
+  });
+  root.addEventListener('pointermove', e => {
+    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress();
+  });
+  root.addEventListener('pointerup', cancelPress);
+  root.addEventListener('pointercancel', cancelPress);
+  // パソコンの右クリックと、Android の長押し
+  root.addEventListener('contextmenu', e => {
+    const r = e.target.closest('[data-press]');
+    if (!r) return;
+    e.preventDefault();
+    pressed(r.dataset.press);
+  });
+  root.addEventListener('click', e => {
+    if (!afterPress) return;
+    afterPress = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
 }
 
 let toastTimer;

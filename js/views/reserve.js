@@ -1,7 +1,7 @@
 // S-10 予約候補（家族全体）。上の子供のタブで切り替えて、その子の「新刊 → シリーズの続き → 借りたい本」を並べる。
 // チェックは最初は付けず、自分で選んだ本だけを予約する。予約済みの本は家族で1つにまとめて一番上に置く。
 import * as lib from '../library.js';
-import { esc, cover, formatDate, toast, kidChips, today } from '../ui.js';
+import { esc, cover, formatDate, toast, kidChips, today, longPress } from '../ui.js';
 import { topKids, tabs } from '../app.js';
 import { suggestionsOf, needsRefresh, refreshSuggestions, dismissSuggestion, wishSuggestion } from '../suggestions.js';
 
@@ -197,36 +197,7 @@ export default async function reserve(root, ctx) {
     update();
   });
 
-  // 長押しの判定。指が動いたらスクロールなので取り消す。長押しのあとに届く click は、チェックやメニューに効かないよう捨てる
-  const PRESS_MS = 500;
-  let press = null;
-  let afterPress = false;
-  const cancelPress = () => { if (press) clearTimeout(press.timer); press = null; };
-  const pressed = id => { cancelPress(); afterPress = true; openMenu(id); };
-  root.addEventListener('pointerdown', e => {
-    afterPress = false;
-    const r = e.target.closest('[data-press]');
-    if (!r || e.button > 0) return;
-    press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => pressed(r.dataset.press), PRESS_MS) };
-  });
-  root.addEventListener('pointermove', e => {
-    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress();
-  });
-  root.addEventListener('pointerup', cancelPress);
-  root.addEventListener('pointercancel', cancelPress);
-  // パソコンの右クリックと、Android の長押し
-  root.addEventListener('contextmenu', e => {
-    const r = e.target.closest('[data-press]');
-    if (!r) return;
-    e.preventDefault();
-    pressed(r.dataset.press);
-  });
-  root.addEventListener('click', e => {
-    if (!afterPress) return;
-    afterPress = false;
-    e.preventDefault();
-    e.stopPropagation();
-  }, true);
+  longPress(root, openMenu);
 
   root.addEventListener('click', async e => {
     if (e.target.closest('[data-close]') || e.target.classList.contains('sheet-back')) {

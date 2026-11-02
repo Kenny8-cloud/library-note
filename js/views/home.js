@@ -1,7 +1,7 @@
 // S-02 ホーム。図書館の雰囲気（貸出カード・木の書棚・目録の引き出し）で、予約の時期、蔵書数、最近借りた本を見せる。
 // 本棚と同じく、借りた本の冊数と最近借りた本は家族全体で表示する
 import * as lib from '../library.js';
-import { esc, cover, formatDate, toast } from '../ui.js';
+import { esc, cover, formatDate, toast, longPress } from '../ui.js';
 import { tabs } from '../app.js';
 import { releases, checkNewReleases, dismissRelease, wishRelease } from '../releases.js';
 import { defaultYear } from './review.js';
@@ -21,8 +21,13 @@ export default async function home(root, ctx) {
   const news = (await releases()).sort((a, b) => (b.pubdate || '').localeCompare(a.pubdate || ''));
   const kidName = id => ctx.children.find(c => c.id === id)?.name || '';
   const history = await lib.familyHistory();
-  const latestDate = history[0]?.borrowedAt;
-  const latest = history.filter(l => l.borrowedAt === latestDate).slice(0, 12);
+  // 非表示にした本を除いた、いちばん新しい日の本を出す。その日の本をすべて隠したら、1つ前の日の本が出る
+  const hidden = await lib.recentHidden();
+  const visible = history.filter(l => !hidden.has(lib.recentKey(l)));
+  const latestDate = visible[0]?.borrowedAt;
+  const latest = visible.filter(l => l.borrowedAt === latestDate).slice(0, 12);
+  // 戻せるのは、いま出ている本の日付以降に隠した本だけ（古い日の本は戻しても表示されないため）
+  const restorable = history.filter(l => hidden.has(lib.recentKey(l)) && (!latest.length || (l.borrowedAt || '') >= (latestDate || ''))).map(lib.recentKey);
   const bookCount = new Set(history.map(l => l.bookId)).size;
 
   const plan = await lib.reservationPlan();
@@ -49,9 +54,10 @@ export default async function home(root, ctx) {
       <section class="bookshelf-card">
         <h3>最近借りた本${latest.length ? `<small>${esc(formatDate(latestDate))} に${latest.length}冊</small>` : ''}</h3>
         ${latest.length ? `
-          <div class="wood-shelf">${latest.map(l => `<a href="#/book/${esc(l.book.id)}" title="${esc(l.book.title)}">${cover(l.book)}</a>`).join('')}</div>
+          <div class="wood-shelf">${latest.map(l => `<a href="#/book/${esc(l.book.id)}" title="${esc(l.book.title)}" data-press="${esc(lib.recentKey(l))}" draggable="false">${cover(l.book)}</a>`).join('')}</div>
           <div class="shelf-board"></div>`
-        : `<p class="empty muted">まだ記録がありません。図書館で借りたら、レシートを撮影して登録しましょう。</p>`}
+        : `<p class="empty muted">${history.length ? '表示する本がありません。' : 'まだ記録がありません。図書館で借りたら、レシートを撮影して登録しましょう。'}</p>`}
+        ${restorable.length ? `<button class="link-btn small" data-restore>非表示にした本を戻す（${restorable.length}冊）</button>` : ''}
       </section>
 
       ${[11, 0].includes(now.getMonth()) ? `<a class="review-banner" href="#/review/${defaultYear()}">
@@ -90,7 +96,36 @@ export default async function home(root, ctx) {
     </main>
     ${tabs('home')}`;
 
+  // 最近借りた本の長押しメニュー
+  longPress(root, key => {
+    if (root.querySelector('.sheet-back')) return;
+    const l = latest.find(x => lib.recentKey(x) === key);
+    if (!l) return;
+    root.insertAdjacentHTML('beforeend', `<div class="sheet-back">
+      <div class="sheet" role="dialog" aria-label="${esc(l.book.title)}">
+        <b class="sheet-title">${esc(l.book.title)}</b>
+        <button class="btn" data-hide-recent="${esc(key)}">最近借りた本に表示しない</button>
+        <button class="btn" data-close>やめる</button>
+      </div></div>`);
+  });
+
   root.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]') || e.target.classList.contains('sheet-back')) {
+      root.querySelector('.sheet-back')?.remove();
+      return;
+    }
+    const hide = e.target.closest('[data-hide-recent]');
+    if (hide) {
+      await lib.hideRecent(hide.dataset.hideRecent);
+      toast('表示しないようにしました。本棚にはそのまま残っています');
+      ctx.refresh();
+      return;
+    }
+    if (e.target.closest('[data-restore]')) {
+      await lib.showRecent(restorable);
+      ctx.refresh();
+      return;
+    }
     const w = e.target.closest('[data-wishnew]');
     if (w) {
       w.disabled = true;
